@@ -20,6 +20,9 @@ EXIT_OK = 0
 EXIT_CONFIG = 1
 EXIT_LOGIN_NEEDED = 2
 
+SITUATION_TOPIC = "situation/ballistic"
+SITUATION_TICK = 5  # seconds between checks of the decision module's timers
+
 
 def _client(settings: Settings, flood_sleep_threshold: int = 0):
     from telethon import TelegramClient
@@ -42,6 +45,7 @@ def _client(settings: Settings, flood_sleep_threshold: int = 0):
 async def run(settings: Settings, dry_run: bool) -> int:
     from .mqtt import DryRunPublisher, MqttPublisher
     from .processor import ChatProcessor
+    from .situation import Situation
     from .telegram import LoginLost, listen
 
     config = load_config(settings.rules)
@@ -61,12 +65,58 @@ async def run(settings: Settings, dry_run: bool) -> int:
         )
     client = _client(settings)
     publisher.start()
+
+    # The decision module, when the rules file describes the home.
+    situation = Situation(config.situation) if config.situation is not None else None
+    ticker = None
+
+    def utcnow() -> datetime:
+        return datetime.now(timezone.utc)
+
+    def decide(decisions: list[dict]) -> None:
+        for decision in decisions:
+            publisher.set_state(SITUATION_TOPIC, decision)
+            publisher.publish_event(f"{SITUATION_TOPIC}/event", decision)
+            log.info(
+                "situation: %s %s (%s%s)",
+                decision["change"],
+                decision["severity"],
+                decision["reason"],
+                f", {decision['source']} id={decision['id']}" if decision.get("source") else "",
+            )
+
+    def observe(chat: str, publications: list, now: datetime) -> None:
+        decide(situation.feed(chat, publications, now))
+
+    async def tick() -> None:
+        while True:
+            await asyncio.sleep(SITUATION_TICK)
+            decide(situation.tick(utcnow()))
+
+    if situation is not None:
+        # Overwrites whatever a previous run left retained: after a restart
+        # nothing is known about a threat in progress.
+        publisher.set_state(SITUATION_TOPIC, situation.snapshot(utcnow()))
+        if settings.alert_level_topic:
+            loop = asyncio.get_running_loop()
+
+            def on_level(payload: str) -> None:
+                level = payload.strip().lower()
+                log.info("air-alert level: %s", level)
+                decide(situation.set_alert_level(level, utcnow()))
+
+            publisher.subscribe(settings.alert_level_topic, lambda payload: loop.call_soon_threadsafe(on_level, payload))
+        else:
+            log.warning("TMG_ALERT_LEVEL_TOPIC is not set: every ballistic threat is treated as under an alert")
+
     try:
         await client.connect()
         if not await client.is_user_authorized():
             raise LoginLost("the session is missing or not authorised")
         publisher.set_login("ok")
-        await listen(client, processors, publisher.publish)
+        if situation is not None:
+            ticker = asyncio.create_task(tick(), name="situation-tick")
+        await listen(client, processors, publisher.publish, observe if situation is not None else None)
         log.warning("the Telegram connection was closed")
         return EXIT_OK
     except LoginLost as error:
@@ -74,6 +124,8 @@ async def run(settings: Settings, dry_run: bool) -> int:
         log.error("login needed: %s", error)
         return EXIT_LOGIN_NEEDED
     finally:
+        if ticker is not None:
+            ticker.cancel()
         await client.disconnect()
         publisher.stop()
 
@@ -170,6 +222,15 @@ def main(argv: list[str] | None = None) -> int:
     review_parser.add_argument("--rules", type=Path, default=Path("rules.example.yaml"))
     review_parser.add_argument("--file", type=Path, help="default: data/history/<chat>.jsonl")
     review_parser.add_argument("--limit", type=int, default=20, help="wordings shown per section")
+    replay_parser = commands.add_parser("replay", help="show the decisions the saved histories would have caused")
+    replay_parser.add_argument("--rules", type=Path, default=Path("rules.example.yaml"))
+    replay_parser.add_argument("--dir", type=Path, default=Path("data/history"), help="folder with <chat>.jsonl files")
+    replay_parser.add_argument(
+        "--alert-level",
+        choices=["unknown", "none", "yellow", "red"],
+        default="unknown",
+        help="air-alert level assumed for the whole period",
+    )
     args = parser.parse_args(argv)
 
     for stream in (sys.stdout, sys.stderr):
@@ -195,6 +256,21 @@ def main(argv: list[str] | None = None) -> int:
                 raise ConfigError(f"{args.rules}: no chat '{args.chat}'")
             messages = read_history(args.file or Path("data/history") / f"{args.chat}.jsonl")
             print(format_review(review_messages(messages, config.chats[args.chat]), args.limit), end="")
+            return EXIT_OK
+        if args.command == "replay":
+            from .replay import format_replay, replay
+            from .review import read_history
+
+            config = load_config(args.rules)
+            if config.situation is None:
+                raise ConfigError(f"{args.rules}: no 'situation' section")
+            histories = {
+                name: read_history(args.dir / f"{name}.jsonl")
+                for name in config.situation.sources
+                if (args.dir / f"{name}.jsonl").exists()
+            }
+            level = None if args.alert_level == "unknown" else args.alert_level
+            print(format_replay(replay(config, histories, level)), end="")
             return EXIT_OK
         settings = Settings.from_env()
         if args.command == "login":

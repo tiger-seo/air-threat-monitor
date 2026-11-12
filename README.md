@@ -2,11 +2,43 @@
 
 Listens to configured Telegram channels and chats with a user-account session, matches each message against rules and publishes the results to MQTT. What to do with an event is decided by the consumer (Home Assistant).
 
-State: under construction. It runs from a terminal; the login page and the Home Assistant app packaging do not exist yet.
+State: under construction. It runs from a terminal; the login page and the Home Assistant app packaging do not exist yet. It has not published to a real broker yet.
 
 ## Rules
 
 See [rules.example.yaml](rules.example.yaml). A rule is a Python regular expression with a `kind`; every match gives one event, and named groups become its `fields`. Before matching and publishing, emoji are removed from the message text and runs of spaces are collapsed, so rules are written for plain text.
+
+## Decisions for the home
+
+With a `situation` section in the rules file, the gateway also follows a ballistic threat across messages and sources and publishes what it means for the home. It needs the air-alert level from the consumer (`TMG_ALERT_LEVEL_TOPIC`, payload `red`, `yellow` or `none`); without it every threat is treated as under an alert.
+
+| Topic | Payload |
+|---|---|
+| `telegram/situation/ballistic` | the current decision, retained |
+| `telegram/situation/ballistic/event` | the same payload on every change, not retained: the trigger for an announcement |
+
+```json
+{"threat": "ballistic", "state": "inbound_home", "severity": "take_cover", "change": "raised", "peak": "take_cover",
+ "reason": "ballistic_missile", "source": "kyiv_m0nitoring", "id": 34921, "text": "Балістика на Київ/передмістя.",
+ "alert_level": "red", "since": "2026-11-11T22:53:59Z", "at": "2026-11-11T22:59:44Z"}
+```
+
+| Severity | When |
+|---|---|
+| `none` | no threat, or a threat while the home has no alert |
+| `attention` | a threat while the home is under an alert, or a missile toward the region |
+| `take_cover` | a missile toward a `home` place, from any source; lasts 10 minutes after the last such message |
+| `impact` | "спуск": the missile is in its terminal phase; lasts 2 minutes |
+
+`change` is `raised`, `lowered`, `repeat` (the same severity confirmed by a new message, at most once a minute) or `clear`. A `clear` carries `peak`, the highest severity of the threat, so the consumer can skip the all-clear of a threat it never announced. The threat ends with the official all-clear or after an hour without missile messages; "чисто" or an unofficial all-clear only withdraws the current warning.
+
+`replay` runs the saved histories through the same code and prints every decision, which is how a change to the rules or the places is judged:
+
+```sh
+.venv/Scripts/python -m telegram_mqtt_gateway replay --alert-level none
+```
+
+Not covered: cruise missiles and drones give events but no decisions; after a restart a threat in progress is not known until its next message.
 
 ## Monthly review
 
@@ -53,6 +85,7 @@ Settings come from environment variables; keep them in `local.env` (ignored by G
 | `TMG_MQTT_USERNAME`, `TMG_MQTT_PASSWORD` | none | |
 | `TMG_TOPIC_PREFIX` | `telegram` | |
 | `TMG_STALE_AFTER` | `120` | seconds |
+| `TMG_ALERT_LEVEL_TOPIC` | none | topic with the air-alert level of the home: `red`, `yellow`, `none` |
 
 ```sh
 set -a; . ./local.env; set +a

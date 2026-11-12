@@ -60,12 +60,14 @@ class ChatPoller:
         processor: ChatProcessor,
         publish: Callable[[str, str, dict], bool],
         now: Callable[[], datetime] = _now,
+        observe: Callable[[str, list, datetime], None] | None = None,
     ):
         self._client = client
         self._entity = entity
         self._processor = processor
         self._publish = publish
         self._now = now
+        self._observe = observe
         self.interval = processor.chat.poll_interval
 
     @property
@@ -82,7 +84,8 @@ class ChatPoller:
         if incoming is None:
             return
         now = self._now()
-        for publication in self._processor.handle(incoming, now):
+        publications = self._processor.handle(incoming, now)
+        for publication in publications:
             self._publish(self.name, publication.kind, publication.payload)
             log.info(
                 "%s: %s id=%s%s via %s, %.1f s after it was posted",
@@ -93,6 +96,8 @@ class ChatPoller:
                 source,
                 (now - incoming.date).total_seconds(),
             )
+        if publications and self._observe is not None:
+            self._observe(self.name, publications, now)
 
     async def poll_once(self) -> float:
         """Fetch what is new and return the delay before the next poll."""
@@ -141,12 +146,16 @@ async def listen(
     client: TelegramClient,
     processors: dict[str, ChatProcessor],
     publish: Callable[[str, str, dict], bool],
+    observe: Callable[[str, list, datetime], None] | None = None,
 ) -> None:
-    """Run until the connection is closed for good; raises LoginLost when the session dies."""
+    """Run until the connection is closed for good; raises LoginLost when the session dies.
+
+    `observe` gets everything published for one message, as a list.
+    """
     pollers: dict[int, ChatPoller] = {}
     for name, processor in processors.items():
         entity = await resolve_chat(client, name)
-        poller = ChatPoller(client, entity, processor, publish)
+        poller = ChatPoller(client, entity, processor, publish, observe=observe)
         try:
             await poller.baseline()
         except LOGIN_LOST as error:

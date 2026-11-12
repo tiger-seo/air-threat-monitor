@@ -26,6 +26,8 @@ class Settings:
     mqtt_password: str | None
     topic_prefix: str
     stale_after: float
+    # Topic where the consumer publishes the air-alert level: red, yellow or none.
+    alert_level_topic: str | None = None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "Settings":
@@ -59,4 +61,5 @@ class Settings:
             mqtt_password=env.get("TMG_MQTT_PASSWORD", "") or None,
             topic_prefix=prefix,
             stale_after=number("TMG_STALE_AFTER", "120", float),
+            alert_level_topic=env.get("TMG_ALERT_LEVEL_TOPIC", "").strip() or None,
         )

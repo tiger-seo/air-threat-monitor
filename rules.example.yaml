@@ -85,3 +85,24 @@ chats:
       # drones, so it means something only during a ballistic threat.
       - kind: nothing_tracked
         pattern: '(?im)^(?:чисто(?:\s+по\s+ракетам)?|не\s+фікс\w*(?:\s+ракет[^.\n]*)?|без\s+(?:загроз|фіксацій\s+ракет)|ні(?:,\s*(?:поспішили|київ\s+обходить[^.\n]*))?|все\s+ж\s+таки\s+не\s+балістика)[.!]*$'
+
+# What the events mean for the home (ballistic threats only, for now).
+#
+# home: places that mean "at us": the city, its suburbs and districts.
+# region: places near enough to pay attention.
+# sources.<chat>.official: its all-clear ends the threat.
+# sources.<chat>.about_home: the chat writes about the home area only, so its
+#   missile messages concern the home even without a place ("2 ракети!").
+# Durations in seconds: episode_timeout (a threat with no all-clear ends, 3600),
+#   inbound_hold ("take cover" lasts this long after the last missile message
+#   toward the home, 600), descent_hold (120), repeat_interval (60).
+#
+# DRAFT of 2026-11-12: the list of places is not yet approved by the owner.
+situation:
+  home: '(?i)ки[єїі]в(?!щин)|столиц|передміст|бровар|бориспіл|вишгород|ірп[іе]н|\bбуч[аіу]\b|вишнев|дарниц|троєщин|оболон|позняк|осокорк|печерськ|\bпод[іо]л|шулявк|нивк|святошин|борщаг|жулян|солом.янк|виноградар|теремк|голосі|(?:лів|прав)\w+\s+берег|\bна\s+(?:лівий|правий)\b'
+  region: '(?i)київщин|київськ\w+\s+област|біл\w+\s+церкв|васильк|обух|фаст[іо]в|трип[іо]л|наливайківк|макар[іо]в|українк'
+  sources:
+    kpszsu:
+      official: true
+    kyiv_m0nitoring:
+      about_home: true

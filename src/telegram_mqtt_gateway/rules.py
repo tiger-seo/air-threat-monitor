@@ -49,6 +49,8 @@ class ChatConfig:
 @dataclass(frozen=True)
 class Config:
     chats: dict[str, ChatConfig]
+    # situation.SituationConfig, when the file has a 'situation' section.
+    situation: Any = None
 
 
 @dataclass(frozen=True)
@@ -75,7 +77,7 @@ def load_config(path: str | Path) -> Config:
 def parse_config(data: Any) -> Config:
     if not isinstance(data, dict) or not isinstance(data.get("chats"), dict):
         raise ConfigError("expected a top-level 'chats' mapping")
-    unknown = set(data) - {"chats"}
+    unknown = set(data) - {"chats", "situation"}
     if unknown:
         raise ConfigError(f"unknown top-level keys: {sorted(unknown)}")
     if not data["chats"]:
@@ -84,7 +86,12 @@ def parse_config(data: Any) -> Config:
     for name, body in data["chats"].items():
         name = str(name)
         chats[name] = _parse_chat(name, body)
-    return Config(chats=chats)
+    situation = None
+    if data.get("situation") is not None:
+        from .situation import parse_situation  # imports this module
+
+        situation = parse_situation(data["situation"], set(chats))
+    return Config(chats=chats, situation=situation)
 
 
 def _parse_chat(name: str, body: Any) -> ChatConfig:
