@@ -4,7 +4,7 @@ Follows air threats to a home in Ukraine. It listens to configured Telegram chan
 
 It was called `telegram-mqtt-gateway` until 2026-11-12; "the gateway" in the code and below means the part that listens to Telegram. Sources other than Telegram are meant to be added as modules that feed the same decisions.
 
-State: under construction. It runs from a terminal; the login page and the Home Assistant app packaging do not exist yet. It has not published to a real broker yet.
+State: under construction. It runs from a terminal and has a login page; the Home Assistant app packaging does not exist yet.
 
 ## Rules
 
@@ -74,6 +74,15 @@ The prefix `air_threat` is configurable (`AIR_THREAT_TOPIC_PREFIX`); everything 
 
 A message older than `AIR_THREAT_STALE_AFTER` seconds when it is received gives no events. An edit gives events only for matches the earlier versions of the message did not have.
 
+## Login and status page
+
+While `run` is going, `http://127.0.0.1:8099/` shows who the gateway is logged in as, the broker connection and the last message of every chat. Without a session, or after the session was terminated in Telegram (Settings → Devices), the gateway keeps running, publishes `air_threat/source/telegram/login` = `needed` and the page shows a QR code to scan in Telegram; an account with two-step verification is then asked for its password. After the login the gateway starts listening without a restart; messages posted in between count as old.
+
+- A QR code is requested from Telegram only while the page is open, a new one about every 30 seconds.
+- The page has no authentication of its own. It listens on `127.0.0.1`; as a Home Assistant app it is reached through ingress only.
+- All its addresses are relative, so it works under any path a proxy serves it at.
+- `AIR_THREAT_WEB_PORT=0` turns the page off: a missing session then ends `run` with exit code 2, and `login` creates the session from a terminal.
+
 ## Running from a terminal
 
 Settings come from environment variables; keep them in `local.env` (ignored by Git).
@@ -88,11 +97,12 @@ Settings come from environment variables; keep them in `local.env` (ignored by G
 | `AIR_THREAT_TOPIC_PREFIX` | `air_threat` | |
 | `AIR_THREAT_STALE_AFTER` | `120` | seconds |
 | `AIR_THREAT_ALERT_LEVEL_TOPIC` | none | topic with the air-alert level of the home: `red`, `yellow`, `none` |
+| `AIR_THREAT_WEB_HOST`, `AIR_THREAT_WEB_PORT` | `127.0.0.1`, `8099` | login and status page; port `0` turns it off |
 
 ```sh
 set -a; . ./local.env; set +a
 .venv/Scripts/python -m air_threat_monitor check-rules rules.example.yaml
-.venv/Scripts/python -m air_threat_monitor login            # QR code in the terminal
+.venv/Scripts/python -m air_threat_monitor login            # QR code in the terminal, instead of the page
 .venv/Scripts/python -m air_threat_monitor run --dry-run    # print instead of publishing
 .venv/Scripts/python -m air_threat_monitor run
 .venv/Scripts/python -m air_threat_monitor history kpszsu --days 30   # raw messages to data/history/kpszsu.jsonl

@@ -22,6 +22,7 @@ EXIT_LOGIN_NEEDED = 2
 
 SITUATION_TOPIC = "ballistic"
 SITUATION_TICK = 5  # seconds between checks of the decision module's timers
+LOGIN_RETRY = 5  # seconds before connecting again after the session was lost
 
 
 def _client(settings: Settings, flood_sleep_threshold: int = 0):
@@ -63,9 +64,6 @@ async def run(settings: Settings, dry_run: bool) -> int:
             settings.mqtt_password,
             settings.topic_prefix,
         )
-    client = _client(settings)
-    publisher.start()
-
     # The decision module, when the rules file describes the home.
     situation = Situation(config.situation) if config.situation is not None else None
     ticker = None
@@ -93,6 +91,30 @@ async def run(settings: Settings, dry_run: bool) -> int:
             await asyncio.sleep(SITUATION_TICK)
             decide(situation.tick(utcnow()))
 
+    # With the page, a missing or terminated session is waited out: the page
+    # shows a QR code and the gateway goes on once it is scanned. Without it
+    # the gateway stops, and `login` creates the session from a terminal.
+    page = None
+    login = None
+    if settings.web_port:
+        from .web import Login, create_app, serve
+
+        def status() -> list[tuple[str, str]]:
+            facts = [("Версія", __version__), ("Брокер MQTT", publisher.description)]
+            facts += [(name, f"останнє повідомлення {p.last_id or '—'}") for name, p in processors.items()]
+            if situation is not None:
+                now = situation.snapshot(utcnow())
+                facts.append(("Балістика", f"{now['state']}, {now['severity']}"))
+                facts.append(("Рівень тривоги", now["alert_level"] or "невідомий"))
+            return facts
+
+        login = Login()
+        try:
+            page = await serve(create_app(login, status), settings.web_host, settings.web_port)
+        except OSError as error:
+            raise SettingsError(f"AIR_THREAT_WEB_PORT {settings.web_port}: the page cannot listen there: {error}") from None
+
+    publisher.start()
     if situation is not None:
         # Overwrites whatever a previous run left retained: after a restart
         # nothing is known about a threat in progress.
@@ -114,23 +136,45 @@ async def run(settings: Settings, dry_run: bool) -> int:
             log.warning("AIR_THREAT_ALERT_LEVEL_TOPIC is not set: every ballistic threat is treated as under an alert")
 
     try:
-        await client.connect()
-        if not await client.is_user_authorized():
-            raise LoginLost("the session is missing or not authorised")
-        publisher.set_login("ok")
         if situation is not None:
             ticker = asyncio.create_task(tick(), name="situation-tick")
-        await listen(client, processors, publisher.publish, observe if situation is not None else None)
-        log.warning("the Telegram connection was closed")
-        return EXIT_OK
-    except LoginLost as error:
-        publisher.set_login("needed")
-        log.error("login needed: %s", error)
-        return EXIT_LOGIN_NEEDED
+        while True:
+            # A new client for every login: whether one that lost its session
+            # can log in again has not been tried.
+            client = _client(settings)
+            try:
+                await client.connect()
+                if not await client.is_user_authorized():
+                    if login is None:
+                        raise LoginLost("the session is missing or not authorised")
+                    publisher.set_login("needed")
+                    log.warning("login needed: open http://%s:%s/", settings.web_host, settings.web_port)
+                    await login.run(client)
+                me = await client.get_me()
+                if me is None:
+                    raise LoginLost("the session is not authorised")
+                name = " ".join(part for part in (me.first_name, me.last_name) if part) or str(me.id)
+                log.info("logged in as %s (id %s)", name, me.id)
+                if login is not None:
+                    login.logged_in(name)
+                publisher.set_login("ok")
+                await listen(client, processors, publisher.publish, observe if situation is not None else None)
+                log.warning("the Telegram connection was closed")
+                return EXIT_OK
+            except LoginLost as error:
+                publisher.set_login("needed")
+                log.error("login needed: %s", error)
+                if login is None:
+                    return EXIT_LOGIN_NEEDED
+                login.lost("Сесію завершено або відкликано")
+            finally:
+                await client.disconnect()
+            await asyncio.sleep(LOGIN_RETRY)
     finally:
         if ticker is not None:
             ticker.cancel()
-        await client.disconnect()
+        if page is not None:
+            await page.cleanup()
         publisher.stop()
 
 

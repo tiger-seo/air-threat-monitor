@@ -8,6 +8,7 @@ description = "Follows air threats to a home in Ukraine from Telegram channels a
 dynamic = ["version"]
 requires-python = ">=3.13"
 dependencies = [
+    "aiohttp==3.14.5",
     "paho-mqtt==2.2.0",
     "PyYAML==6.0.3",
     "qrcode==8.2",

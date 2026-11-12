@@ -60,6 +60,12 @@ class MqttPublisher:
         self._client.disconnect()
         self._client.loop_stop()
 
+    @property
+    def description(self) -> str:
+        """The broker and whether it is connected, for the status page."""
+        state = "підключено" if self._client.is_connected() else "немає зв'язку"
+        return f"{self._host}:{self._port}, {state}"
+
     def set_login(self, state: str) -> None:
         """Remember and publish the login state: "ok" or "needed"."""
         self.set_state(f"{TELEGRAM}/login", state)
@@ -124,6 +130,8 @@ class DryRunPublisher:
 
     def __init__(self, prefix: str = "air_threat"):
         self._prefix = prefix.strip("/")
+
+    description = "пробний запуск, без брокера"
 
     def start(self) -> None:
         print(f"{self._prefix}/status online", flush=True)

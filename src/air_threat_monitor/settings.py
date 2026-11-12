@@ -28,6 +28,9 @@ class Settings:
     stale_after: float
     # Topic where the consumer publishes the air-alert level: red, yellow or none.
     alert_level_topic: str | None = None
+    # Login and status page; port 0 turns it off.
+    web_host: str = "127.0.0.1"
+    web_port: int = 8099
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "Settings":
@@ -62,4 +65,6 @@ class Settings:
             topic_prefix=prefix,
             stale_after=number("AIR_THREAT_STALE_AFTER", "120", float),
             alert_level_topic=env.get("AIR_THREAT_ALERT_LEVEL_TOPIC", "").strip() or None,
+            web_host=env.get("AIR_THREAT_WEB_HOST", "").strip() or "127.0.0.1",
+            web_port=number("AIR_THREAT_WEB_PORT", "8099"),
         )
