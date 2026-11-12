@@ -7,3 +7,7 @@ __pycache__/
 *.session
 *.session-journal
 /data/
+
+# Local settings with the API hash and the broker password.
+local.env
+/rules.yaml
