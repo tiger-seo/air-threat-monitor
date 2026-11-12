@@ -6,12 +6,82 @@
 # rules: Python regular expressions, matched against the message text after
 #   emoji are removed and spaces are collapsed. Every match gives one event of
 #   the rule's kind; named groups become the event's fields.
+# watch: words that a message about the chat's subject is likely to contain.
+#   Not used while listening; the `review` command lists the messages that
+#   contain them and matched no rule, which is how a new wording is noticed.
+# max_length: a longer message (after cleaning) gives no events. Alerts are
+#   short; daily summaries and commentary use the same words and are long.
+#
+# The wordings drift. Re-validate once a month: see "Monthly review" in README.md.
 
 chats:
+  # Official Air Force channel. Wordings checked on 30 days of history, 2026-11-12.
   kpszsu:
     poll_interval: 3
+    max_length: 200
+    watch: '(?i)баліст|ракет|відбій|загроза (?!застосування авіаційних)'
     rules:
       - kind: ballistic_clear
         pattern: 'Відбій загрози застосування\s+балістичного'
       - kind: ballistic_threat
-        pattern: 'Загроза застосування балістичного озброєння(?:\s+з\s+(?P<from>[^.!\n]+))?'
+        pattern: '[Зз]агроза (?:застосування )?балістичного озброєння(?:\s+зі?\s+(?P<from>[^.!\n(]+))?'
+      # Follow-ups that say where a missile is flying. Some follow-ups are only a
+      # place name ("Київ!"): no rule can know them, follow reply_to instead.
+      # "Балістика на Київ", "Балістичні ракети курсом на Київ", "4 балістичні
+      # ракети на Київ!". Only the forms used in alerts: the daily summaries say
+      # "атакував балістичними ракетами".
+      - kind: ballistic_missile
+        pattern: '(?i)балісти(?:ка|чн(?:а|і|их)\s+ракет[аи]?)\s+(?P<route>[^.!\n]+)'
+      # "Ще на Київ балістика"
+      - kind: ballistic_missile
+        pattern: '(?i)(?P<route>на\s+[^.!\n]+?)\s+балістика'
+      # "Повторний пуск балістики на Київ", "Ще пуск балістики"
+      - kind: ballistic_missile
+        pattern: '(?i)пуск\w*\s+балістики(?:\s+(?P<route>[^.!\n]+))?'
+      - kind: cruise_missile
+        pattern: '(?i)крилат(?:а|і|их)\s+ракет[аи]?\s+(?P<route>[^.!\n]+)'
+      # A missile of an unnamed type: "Ракета на КИїв!", "Ще ракети на Київ",
+      # "Ще 2 ракети на Київ!"
+      - kind: missile
+        pattern: '(?im)^(?:ще\s+)?(?:\d+\s+)?ракет[аи]\s+(?P<route>[^.!\n]+)'
+
+  # Unofficial Kyiv monitoring channel: informal lower-case wording, almost
+  # everything in it concerns Kyiv and its suburbs. Wordings checked on 30 days
+  # of history, 2026-11-12. Most patterns are tied to the start of a line: the
+  # channel also posts long commentary that mentions the same words.
+  kyiv_m0nitoring:
+    poll_interval: 3
+    max_length: 120
+    watch: '(?i)баліст|ракет|спуск|загроз|циркон|іскандер|онікс|відбій|чисто|фікс'
+    rules:
+      # "Загроза балістики з Брянська.", "Загроза з Воронежа.", "знову загроза
+      # балістики", "Повторно дали загрозу балістики."
+      - kind: ballistic_threat
+        pattern: '(?im)^(?:знову\s+|повторн\w+\s+(?:дали\s+)?)?загроз[ау]\s+(?:балістики(?:\s+зі?\s+(?P<from>[\w''-]+))?|зі?\s+(?P<from2>[\w''-]+))'
+      # The threat in one or two words: "балістика", "бал", "Балістика Воронеж."
+      - kind: ballistic_threat
+        pattern: '(?im)^(?:бал|бал+[іи]стика)(?:\s+(?P<from>воронеж\w*|брянс\w*|курс\w*))?[.!]*$'
+      # Only the launch area, as the whole message: "брянск", "Воронеж". With more
+      # lines it is a relayed Russian alert ("Брянск / Ракетная опасность").
+      - kind: ballistic_threat
+        pattern: '(?i)\A(?P<from>воронеж|брянсь?к|курсь?к)[.!]*\Z'
+      # "Балістика на Київ/передмістя." (the channel's fixed phrase), "2 ракети
+      # на київ", "2 ракети з брянська на київ", "2-4 циркона на Київ."
+      - kind: ballistic_missile
+        pattern: '(?i)(?:балісти\w+|ракет\w*|циркон\w*|іскандер\w*|онікс\w*)(?:\s+[^.!:\n]*?)?\s+на\s+(?P<route>(?:[^.!:\n«]*?[\s/])?ки[єїі]в(?!ськ)[^.!\n]*)'
+      # More missiles, with no destination: "2 ракети!", "Ще 2-4 ракети!", "4 ракети"
+      - kind: ballistic_missile
+        pattern: '(?im)^(?:ще\s+)?(?P<count>\d+(?:-\d+)?)\s+ракет\w*[\s!]*$'
+      # The missile is in its terminal phase: impact within seconds. Only this
+      # channel reports it. "спуску" (as in a joke about stairs) must not match.
+      - kind: ballistic_descent
+        pattern: '(?i)(?<!\w)спуск(?!\w)(?:\s+на\s+(?P<where>[^.!\n]+))?'
+      # The channel's own end of the ballistic threat, usually minutes before
+      # the official one. A bare "відбій" is not here: it may be about drones.
+      - kind: ballistic_clear
+        pattern: '(?i)відбій\s+(?:по\s+)?(?:балісти\w+|загрози)|балістичн\w+\s+(?:загроза\s+знята|відбій)|(?:загрозу(?:\s+по\s+ракетам)?|ракетну)\s+зняли'
+      # Nothing is being tracked, or the previous warning is withdrawn: "чисто",
+      # "не фіксується", "Без загроз.", "Ні.", "ні, поспішили". Also said about
+      # drones, so it means something only during a ballistic threat.
+      - kind: nothing_tracked
+        pattern: '(?im)^(?:чисто(?:\s+по\s+ракетам)?|не\s+фікс\w*(?:\s+ракет[^.\n]*)?|без\s+(?:загроз|фіксацій\s+ракет)|ні(?:,\s*(?:поспішили|київ\s+обходить[^.\n]*))?|все\s+ж\s+таки\s+не\s+балістика)[.!]*$'

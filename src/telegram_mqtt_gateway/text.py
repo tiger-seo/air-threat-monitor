@@ -17,8 +17,9 @@ _EMOJI = re.compile(
     # Any other character forced to emoji presentation, such as an arrow or
     # the copyright sign followed by U+FE0F.
     "|[^\\n]️"
-    # Leftover joiners, variation selectors, keycap marks and tag characters.
-    "|[‍︎️⃣\U000e0020-\U000e007f]"
+    # Leftover joiners and other invisible characters, variation selectors,
+    # keycap marks and tag characters.
+    "|[​-‍⁠﻿︎️⃣\U000e0020-\U000e007f]"
     ")+"
 )
 _HORIZONTAL_SPACE = re.compile(r"[^\S\n]+")

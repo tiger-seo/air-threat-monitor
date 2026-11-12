@@ -17,6 +17,10 @@ from telegram_mqtt_gateway.text import clean_text
         ),
         ("🚀КАБи на Сумщину та Донеччину.", "КАБи на Сумщину та Донеччину."),
         ("🏍🛵 БпЛА курсом на Київ з півночі.", "БпЛА курсом на Київ з півночі."),
+        # Raw text as Telethon gave it on 2026-11-11: the channel's custom emoji
+        # arrives as an ordinary one, with no space after it.
+        ("🚀Ще одна балістична ракета на Київщину!", "Ще одна балістична ракета на Київщину!"),
+        ("🚀Київ!", "Київ!"),
         ("⚠ Увага!", "Увага!"),
         ("⚠️ Увага!", "Увага!"),
         # An emoji between words must not glue them together.
