@@ -103,7 +103,11 @@ async def run(settings: Settings, dry_run: bool) -> int:
             def on_level(payload: str) -> None:
                 level = payload.strip().lower()
                 log.info("air-alert level: %s", level)
-                decide(situation.set_alert_level(level, utcnow()))
+                decisions = situation.set_alert_level(level, utcnow())
+                decide(decisions)
+                if not decisions:
+                    # No change of severity, but the retained state shows the level.
+                    publisher.set_state(SITUATION_TOPIC, situation.snapshot(utcnow()))
 
             publisher.subscribe(settings.alert_level_topic, lambda payload: loop.call_soon_threadsafe(on_level, payload))
         else:
