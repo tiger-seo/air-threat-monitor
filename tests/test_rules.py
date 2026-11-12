@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from telegram_mqtt_gateway.rules import ConfigError, RuleMatch, load_config, match_rules, parse_config
-from telegram_mqtt_gateway.text import clean_text
+from air_threat_monitor.rules import ConfigError, RuleMatch, load_config, match_rules, parse_config
+from air_threat_monitor.text import clean_text
 
 EXAMPLE = Path(__file__).parent.parent / "rules.example.yaml"
 

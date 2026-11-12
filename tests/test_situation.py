@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from telegram_mqtt_gateway.processor import ChatProcessor, IncomingMessage
-from telegram_mqtt_gateway.rules import ConfigError, load_config, parse_config
-from telegram_mqtt_gateway.situation import Situation
+from air_threat_monitor.processor import ChatProcessor, IncomingMessage
+from air_threat_monitor.rules import ConfigError, load_config, parse_config
+from air_threat_monitor.situation import Situation
 
 EXAMPLE = Path(__file__).parent.parent / "rules.example.yaml"
 T0 = datetime(2026, 11, 11, 22, 53, 59, tzinfo=timezone.utc)

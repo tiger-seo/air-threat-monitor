@@ -10,6 +10,8 @@ import paho.mqtt.client as paho
 log = logging.getLogger(__name__)
 
 QOS = 1
+# Where the Telegram source publishes under the prefix: its login state and its chats.
+TELEGRAM = "source/telegram"
 
 
 def _encode(payload) -> str:
@@ -30,8 +32,8 @@ class MqttPublisher:
         port: int = 1883,
         username: str | None = None,
         password: str | None = None,
-        prefix: str = "telegram",
-        client_id: str = "telegram-mqtt-gateway",
+        prefix: str = "air_threat",
+        client_id: str = "air-threat-monitor",
     ):
         self._host = host
         self._port = port
@@ -60,7 +62,7 @@ class MqttPublisher:
 
     def set_login(self, state: str) -> None:
         """Remember and publish the login state: "ok" or "needed"."""
-        self.set_state("login", state)
+        self.set_state(f"{TELEGRAM}/login", state)
 
     def set_state(self, suffix: str, payload) -> None:
         """Publish a retained value under the prefix and keep it for reconnects."""
@@ -72,7 +74,7 @@ class MqttPublisher:
 
     def publish(self, chat: str, kind: str, payload: dict) -> bool:
         """Publish a message or an event of a chat; False when it was dropped."""
-        return self.publish_event(f"{chat}/{kind}", payload)
+        return self.publish_event(f"{TELEGRAM}/{chat}/{kind}", payload)
 
     def publish_event(self, suffix: str, payload: dict) -> bool:
         topic = self._topic(suffix)
@@ -120,7 +122,7 @@ class MqttPublisher:
 class DryRunPublisher:
     """Stands in for the broker: prints what would be published."""
 
-    def __init__(self, prefix: str = "telegram"):
+    def __init__(self, prefix: str = "air_threat"):
         self._prefix = prefix.strip("/")
 
     def start(self) -> None:
@@ -130,13 +132,13 @@ class DryRunPublisher:
         print(f"{self._prefix}/status offline", flush=True)
 
     def set_login(self, state: str) -> None:
-        self.set_state("login", state)
+        self.set_state(f"{TELEGRAM}/login", state)
 
     def set_state(self, suffix: str, payload) -> None:
         print(f"{self._prefix}/{suffix} (retained) {_encode(payload)}", flush=True)
 
     def publish(self, chat: str, kind: str, payload: dict) -> bool:
-        return self.publish_event(f"{chat}/{kind}", payload)
+        return self.publish_event(f"{TELEGRAM}/{chat}/{kind}", payload)
 
     def publish_event(self, suffix: str, payload: dict) -> bool:
         print(f"{self._prefix}/{suffix} {_encode(payload)}", flush=True)

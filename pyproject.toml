@@ -3,8 +3,8 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "telegram-mqtt-gateway"
-description = "Listens to Telegram chats with a user session and publishes messages and rule matches to MQTT"
+name = "air-threat-monitor"
+description = "Follows air threats to a home in Ukraine from Telegram channels and publishes messages, rule matches and decisions to MQTT"
 dynamic = ["version"]
 requires-python = ">=3.13"
 dependencies = [
@@ -18,7 +18,7 @@ dependencies = [
 dev = ["pytest>=8"]
 
 [tool.setuptools.dynamic]
-version = { attr = "telegram_mqtt_gateway.__version__" }
+version = { attr = "air_threat_monitor.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

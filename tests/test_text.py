@@ -1,6 +1,6 @@
 import pytest
 
-from telegram_mqtt_gateway.text import clean_text
+from air_threat_monitor.text import clean_text
 
 
 @pytest.mark.parametrize(

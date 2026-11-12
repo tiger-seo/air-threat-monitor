@@ -1,5 +1,5 @@
-from telegram_mqtt_gateway.review import format_review, review_messages
-from telegram_mqtt_gateway.rules import parse_config
+from air_threat_monitor.review import format_review, review_messages
+from air_threat_monitor.rules import parse_config
 
 CHAT = parse_config(
     {

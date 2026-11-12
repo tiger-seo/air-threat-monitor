@@ -14,13 +14,13 @@ from . import __version__
 from .rules import ConfigError, load_config
 from .settings import Settings, SettingsError
 
-log = logging.getLogger("telegram_mqtt_gateway")
+log = logging.getLogger("air_threat_monitor")
 
 EXIT_OK = 0
 EXIT_CONFIG = 1
 EXIT_LOGIN_NEEDED = 2
 
-SITUATION_TOPIC = "situation/ballistic"
+SITUATION_TOPIC = "ballistic"
 SITUATION_TICK = 5  # seconds between checks of the decision module's timers
 
 
@@ -36,7 +36,7 @@ def _client(settings: Settings, flood_sleep_threshold: int = 0):
         # down and logs it; a one-off command may let Telethon sit it out.
         flood_sleep_threshold=flood_sleep_threshold,
         # Shown in Telegram under Settings → Devices, to recognise the session.
-        device_model="telegram-mqtt-gateway",
+        device_model="air-threat-monitor",
         system_version=platform.node() or platform.system(),
         app_version=__version__,
     )
@@ -111,7 +111,7 @@ async def run(settings: Settings, dry_run: bool) -> int:
 
             publisher.subscribe(settings.alert_level_topic, lambda payload: loop.call_soon_threadsafe(on_level, payload))
         else:
-            log.warning("TMG_ALERT_LEVEL_TOPIC is not set: every ballistic threat is treated as under an alert")
+            log.warning("AIR_THREAT_ALERT_LEVEL_TOPIC is not set: every ballistic threat is treated as under an alert")
 
     try:
         await client.connect()
@@ -209,7 +209,7 @@ async def history(settings: Settings, chat: str, days: float, out: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="telegram_mqtt_gateway", description=__doc__)
+    parser = argparse.ArgumentParser(prog="air_threat_monitor", description=__doc__)
     parser.add_argument("--verbose", action="store_true", help="log Telethon and MQTT details too")
     commands = parser.add_subparsers(dest="command", required=True)
     run_parser = commands.add_parser("run", help="listen to the chats and publish to MQTT")

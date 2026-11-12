@@ -6,9 +6,9 @@ from types import SimpleNamespace
 import pytest
 from telethon import errors
 
-from telegram_mqtt_gateway.processor import ChatProcessor
-from telegram_mqtt_gateway.rules import load_config
-from telegram_mqtt_gateway.telegram import ChatPoller, LoginLost, to_incoming
+from air_threat_monitor.processor import ChatProcessor
+from air_threat_monitor.rules import load_config
+from air_threat_monitor.telegram import ChatPoller, LoginLost, to_incoming
 
 T0 = datetime(2026, 11, 10, 19, 23, 7, tzinfo=timezone.utc)
 THREAT = "☄️ Загроза застосування балістичного озброєння з Брянська."

@@ -1,7 +1,7 @@
 # Rules of the Telegram → MQTT gateway.
 #
 # chats.<name>: the chat's public username; it is also the MQTT topic level
-#   (telegram/<name>/message, telegram/<name>/event).
+#   (air_threat/source/telegram/<name>/message, .../event).
 # poll_interval: seconds between history requests, 3 by default.
 # rules: Python regular expressions, matched against the message text after
 #   emoji are removed and spaces are collapsed. Every match gives one event of

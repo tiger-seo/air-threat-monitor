@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from telegram_mqtt_gateway.processor import ChatProcessor, IncomingMessage
-from telegram_mqtt_gateway.rules import load_config
+from air_threat_monitor.processor import ChatProcessor, IncomingMessage
+from air_threat_monitor.rules import load_config
 
 T0 = datetime(2026, 11, 10, 19, 23, 7, tzinfo=timezone.utc)
 THREAT = "☄️ Загроза застосування балістичного озброєння з Брянська."

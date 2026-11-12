@@ -46,20 +46,20 @@ class Settings:
             except ValueError:
                 raise SettingsError(f"{name}: expected a number, got '{raw}'") from None
 
-        api_id = number("TMG_API_ID", required("TMG_API_ID"))
-        prefix = (env.get("TMG_TOPIC_PREFIX", "").strip() or "telegram").strip("/")
+        api_id = number("AIR_THREAT_API_ID", required("AIR_THREAT_API_ID"))
+        prefix = (env.get("AIR_THREAT_TOPIC_PREFIX", "").strip() or "air_threat").strip("/")
         if not prefix or any(char in prefix for char in "+#"):
-            raise SettingsError("TMG_TOPIC_PREFIX: must be a topic without wildcards")
+            raise SettingsError("AIR_THREAT_TOPIC_PREFIX: must be a topic without wildcards")
         return cls(
             api_id=api_id,
-            api_hash=required("TMG_API_HASH"),
-            session=Path(env.get("TMG_SESSION", "").strip() or "data/session/gateway"),
-            rules=Path(env.get("TMG_RULES", "").strip() or "rules.yaml"),
-            mqtt_host=env.get("TMG_MQTT_HOST", "").strip() or "localhost",
-            mqtt_port=number("TMG_MQTT_PORT", "1883"),
-            mqtt_username=env.get("TMG_MQTT_USERNAME", "").strip() or None,
-            mqtt_password=env.get("TMG_MQTT_PASSWORD", "") or None,
+            api_hash=required("AIR_THREAT_API_HASH"),
+            session=Path(env.get("AIR_THREAT_SESSION", "").strip() or "data/session/telegram"),
+            rules=Path(env.get("AIR_THREAT_RULES", "").strip() or "rules.yaml"),
+            mqtt_host=env.get("AIR_THREAT_MQTT_HOST", "").strip() or "localhost",
+            mqtt_port=number("AIR_THREAT_MQTT_PORT", "1883"),
+            mqtt_username=env.get("AIR_THREAT_MQTT_USERNAME", "").strip() or None,
+            mqtt_password=env.get("AIR_THREAT_MQTT_PASSWORD", "") or None,
             topic_prefix=prefix,
-            stale_after=number("TMG_STALE_AFTER", "120", float),
-            alert_level_topic=env.get("TMG_ALERT_LEVEL_TOPIC", "").strip() or None,
+            stale_after=number("AIR_THREAT_STALE_AFTER", "120", float),
+            alert_level_topic=env.get("AIR_THREAT_ALERT_LEVEL_TOPIC", "").strip() or None,
         )
