@@ -23,6 +23,7 @@ EXIT_LOGIN_NEEDED = 2
 SITUATION_TOPIC = "ballistic"
 SITUATION_TICK = 5  # seconds between checks of the decision module's timers
 LOGIN_RETRY = 5  # seconds before connecting again after the session was lost
+CONNECT_RETRY = 15  # seconds before trying again when Telegram cannot be reached at start
 
 
 def _client(settings: Settings, flood_sleep_threshold: int = 0):
@@ -143,7 +144,14 @@ async def run(settings: Settings, dry_run: bool) -> int:
             # can log in again has not been tried.
             client = _client(settings)
             try:
-                await client.connect()
+                try:
+                    await client.connect()
+                except (ConnectionError, OSError) as error:
+                    # At boot the network may come up after the app; nothing
+                    # restarts a process that gave up.
+                    log.warning("Telegram cannot be reached, will retry: %r", error)
+                    await asyncio.sleep(CONNECT_RETRY)
+                    continue
                 if not await client.is_user_authorized():
                     if login is None:
                         raise LoginLost("the session is missing or not authorised")
