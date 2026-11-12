@@ -127,9 +127,20 @@ def qr_svg(url: str) -> str:
     return image.to_string(encoding="unicode")
 
 
-def create_app(login: Login, status: Callable[[], dict]) -> web.Application:
-    """`status` gives what the page shows about the gateway besides the login."""
+def create_app(login: Login, status: Callable[[], dict], allow: tuple[str, ...] = ()) -> web.Application:
+    """`status` gives what the page shows about the gateway besides the login.
+
+    `allow` lists the addresses the page answers to; empty means any. The page
+    has no login of its own: behind Home Assistant's ingress it must answer the
+    ingress proxy only, or anything on the app network could read the QR code.
+    """
     cached: tuple[str, str] | None = None
+
+    @web.middleware
+    async def only_allowed(request: web.Request, handler):
+        if allow and request.remote not in allow:
+            raise web.HTTPForbidden()
+        return await handler(request)
 
     async def page(request: web.Request) -> web.Response:
         return web.Response(text=PAGE, content_type="text/html", headers={"Cache-Control": "no-store"})
@@ -162,7 +173,7 @@ def create_app(login: Login, status: Callable[[], dict]) -> web.Application:
             raise web.HTTPConflict()
         return web.Response(status=204)
 
-    app = web.Application(client_max_size=4096)
+    app = web.Application(client_max_size=4096, middlewares=[only_allowed])
     app.add_routes([web.get("/", page), web.get("/api/state", state), web.post("/api/password", password)])
     return app
 

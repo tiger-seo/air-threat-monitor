@@ -5,6 +5,7 @@ import asyncio
 import getpass
 import json
 import logging
+import os
 import platform
 import sys
 from datetime import datetime, timedelta, timezone
@@ -111,7 +112,7 @@ async def run(settings: Settings, dry_run: bool) -> int:
 
         login = Login()
         try:
-            page = await serve(create_app(login, status), settings.web_host, settings.web_port)
+            page = await serve(create_app(login, status, settings.web_allow), settings.web_host, settings.web_port)
         except OSError as error:
             raise SettingsError(f"AIR_THREAT_WEB_PORT {settings.web_port}: the page cannot listen there: {error}") from None
 
@@ -266,6 +267,7 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     run_parser = commands.add_parser("run", help="listen to the chats and publish to MQTT")
     run_parser.add_argument("--dry-run", action="store_true", help="print publications instead of sending them")
+    commands.add_parser("app", help="run as a Home Assistant app: settings from the app's options and the Supervisor")
     commands.add_parser("login", help="create the Telegram session by QR code in this terminal")
     check = commands.add_parser("check-rules", help="validate a rules file")
     check.add_argument("path")
@@ -328,6 +330,11 @@ def main(argv: list[str] | None = None) -> int:
             level = None if args.alert_level == "unknown" else args.alert_level
             print(format_replay(replay(config, histories, level)), end="")
             return EXIT_OK
+        if args.command == "app":
+            from . import supervisor
+
+            env = supervisor.environment(supervisor.read_options(), supervisor.fetch_mqtt())
+            return asyncio.run(run(Settings.from_env({**os.environ, **env}), dry_run=False))
         settings = Settings.from_env()
         if args.command == "login":
             return asyncio.run(login(settings))

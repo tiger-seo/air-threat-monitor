@@ -4,7 +4,7 @@ Follows air threats to a home in Ukraine. It listens to configured Telegram chan
 
 It was called `telegram-mqtt-gateway` until 2026-11-12; "the gateway" in the code and below means the part that listens to Telegram. Sources other than Telegram are meant to be added as modules that feed the same decisions.
 
-State: under construction. It runs from a terminal and has a login page; the Home Assistant app packaging does not exist yet.
+State: under construction. It runs from a terminal and has a login page; the Home Assistant app packaging is written and has not been deployed yet.
 
 ## Rules
 
@@ -108,6 +108,15 @@ set -a; . ./local.env; set +a
 .venv/Scripts/python -m air_threat_monitor history kpszsu --days 30   # raw messages to data/history/kpszsu.jsonl
 .venv/Scripts/python -m air_threat_monitor review kpszsu               # what each rule caught in that history
 ```
+
+## As a Home Assistant app
+
+`config.yaml` and `Dockerfile` make the repository a local Home Assistant app (add-on), built on the device. `./deploy.sh` copies the committed code to `/local_apps/air_threat_monitor` over `ssh hassio` and installs, updates (new `version` in `config.yaml`) or rebuilds (same version) the app `local_air_threat_monitor`. State: written, not deployed yet.
+
+- **Settings** come from the app's Configuration tab (`api_id`, `api_hash`, the rules file, the topic prefix, the alert-level topic); the broker's address and login come from the Supervisor (`services: mqtt:need`). The command `app` reads both and then runs like `run`.
+- **Rules** are read from `/homeassistant/air_threat_monitor/rules.yaml`, which is mounted read-only; restart the app after changing them.
+- **Login**: the page opens from the Home Assistant sidebar (ingress) and answers the ingress proxy only. The session is kept in the app's `/data/session/` and is excluded from backups, so a restored system asks for a new login.
+- **Version**: `version` in `config.yaml` and `__version__` change together; a test compares them.
 
 ## Development
 

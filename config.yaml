@@ -1,0 +1,46 @@
+# Home Assistant app (add-on) definition. There is no `image`: the Supervisor
+# builds the Dockerfile next to this file on the device.
+name: Air Threat Monitor
+version: "0.2.0" # the same as __version__; a test compares them
+slug: air_threat_monitor
+description: Follows air threats to the home from Telegram channels and publishes decisions to MQTT
+arch:
+  - aarch64
+  - amd64
+startup: application
+boot: auto
+
+# The login and status page, reached through Home Assistant only.
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:shield-alert-outline
+panel_title: Air Threat Monitor
+
+# The broker's address and login come from the Supervisor.
+services:
+  - mqtt:need
+
+# The rules file lives in the Home Assistant configuration, under its Git; read-only here.
+map:
+  - type: homeassistant_config
+
+# The Telegram session gives full access to the account, so it stays out of
+# backups: after a restore the page asks for a new login.
+backup_exclude:
+  - session
+  - session/*
+  - "*.session"
+  - "*.session-journal"
+
+options:
+  api_id: null
+  api_hash: null
+  rules: /homeassistant/air_threat_monitor/rules.yaml
+  topic_prefix: air_threat
+  alert_level_topic: air_alert/kyiv/level
+schema:
+  api_id: int
+  api_hash: password
+  rules: str
+  topic_prefix: str
+  alert_level_topic: str?
