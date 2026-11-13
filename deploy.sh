@@ -27,15 +27,16 @@ git archive HEAD | ssh -o BatchMode=yes "$HOST" "rm -rf $DIR && mkdir -p $DIR &&
 ssh -o BatchMode=yes "$HOST" 'ha store reload'
 $COPY_ONLY && exit 0
 
-# `ha apps info` also answers for an app that is only in the store, with
-# "installed":false and no version; it fails when the Supervisor rejected config.yaml.
+# `ha apps info` also answers for an app that is only in the store, with no
+# installed version ("version":null); it fails when the Supervisor rejected
+# config.yaml. Supervisor 2026.11 has no "installed" field, so the version decides.
 if ! info=$(ssh -o BatchMode=yes "$HOST" "ha apps info $SLUG --raw-json"); then
   echo "The Supervisor does not list $SLUG: see 'ha supervisor logs' for what is wrong with config.yaml."
   exit 1
 fi
 
 case $info in
-  *'"installed":true'*) ;;
+  *'"version":"'*) ;;
   *)
     ssh -o BatchMode=yes "$HOST" "ha apps install $SLUG"
     echo "Installed, not started. In Home Assistant: Settings → Apps → Air Threat Monitor:"
