@@ -6,6 +6,8 @@ build-backend = "setuptools.build_meta"
 name = "air-threat-monitor"
 description = "Follows air threats to a home in Ukraine from Telegram channels and publishes messages, rule matches and decisions to MQTT"
 dynamic = ["version"]
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.13"
 dependencies = [
     "aiohttp==3.14.5",

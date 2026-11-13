@@ -137,3 +137,7 @@ python -m venv .venv
 .venv/Scripts/python -m pip install -e ".[dev]"   # bin/ instead of Scripts/ outside Windows
 .venv/Scripts/python -m pytest
 ```
+
+## License
+
+[MIT](LICENSE)
