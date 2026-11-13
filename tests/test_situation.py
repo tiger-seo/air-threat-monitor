@@ -7,7 +7,7 @@ import pytest
 
 from air_threat_monitor.processor import ChatProcessor, IncomingMessage
 from air_threat_monitor.rules import ConfigError, load_config, parse_config
-from air_threat_monitor.situation import Situation
+from air_threat_monitor.situation import Interpreter, Situation
 
 EXAMPLE = Path(__file__).parent.parent / "rules.example.yaml"
 T0 = datetime(2026, 11, 11, 22, 53, 59, tzinfo=timezone.utc)
@@ -283,3 +283,105 @@ def test_home_places_of_the_example():
         assert home.search(text), text
     for text in ("на Київщину", "південь Київщини", "на Харків", "Біла Церква!", "на Запоріжжя"):
         assert not home.search(text), text
+    for text in ("Київського водосховища", "з Київської області", "на Подільськ", "Кам'янець-Подільського", "Мельницю-Подільську"):
+        assert not home.search(text), text
+    for text in ("на Поділ", "на Подолі"):
+        assert home.search(text), text
+
+
+# --- Threats known by their course --------------------------------------------
+
+
+class Courses(World):
+    """The same channels, with the whole interpreter: ballistic and the courses."""
+
+    def __init__(self, alert_level="red"):
+        super().__init__(alert_level)
+        self.situation = Interpreter(load_config(EXAMPLE).situation)
+        self.situation.set_alert_level(alert_level, self.now)
+
+
+def of(decisions, threat):
+    return [(d["change"], d["severity"], d["state"]) for d in decisions if d["threat"] == threat]
+
+
+def test_banderols_of_2026_11_13():
+    """The Banderols that brought the red alert to Kyiv, as both channels posted them."""
+    world = Courses()
+    # Over other regions: nothing, however many.
+    assert world.post(AF, "🚀 Полтавщина: Бандероль курсом на Нові Санжари.") == []
+    region = world.post(AF, '🚀Баражуючі боєприпаси "Бандероль" в р-ні Ніжина курс південно-західний (Київщина)', after=60)
+    assert of(region, "banderol") == [("raised", "attention", "inbound_region")]
+    home = world.post(MON, "червона через бандеролі на вишгород/околиці", after=312)
+    assert of(home, "banderol") == [("raised", "take_cover", "inbound_home")]
+    assert home[0]["text"] == "червона через бандеролі на вишгород/околиці"
+    # Another channel, six minutes later: one more "Ще бандероль на Київ".
+    again = world.post(AF, '🚀Баражуючі боєприпаси "Бандероль" в р-ні Київського водосховища курсом на Київ з півночі.', after=345)
+    assert of(again, "banderol") == [("repeat", "take_cover", "inbound_home")]
+    # A region message neither lowers nor outlasts the warning for the home.
+    assert world.post(AF, '🚀Баражуючі боєприпаси "Бандероль" в р-ні Куликівки (Чернігівщина) курс південно-західний (Київщина)', after=63) == []
+    # Ten minutes after the last message about the home, the warning ends.
+    assert of(world.wait(600 - 63 - 1), "banderol") == []
+    assert of(world.wait(1), "banderol") == [("lowered", "none", "nearby")]
+    westward = world.post(AF, '🚀Баражуючі боєприпаси "Бандероль" на заході Київщини на Житомирщину вектором руху Житомир.', after=420)
+    assert of(westward, "banderol") == [("raised", "attention", "inbound_region")]
+    world.wait(1800)
+    clear = world.wait(1)
+    assert of(clear, "banderol") == [("clear", "none", "idle")]
+    assert clear[0]["peak"] == "take_cover"
+    # The ballistic threat never moved.
+    assert [d for d in world.decisions if d["threat"] == "ballistic"] == []
+
+
+def test_a_reply_follows_the_same_weapon():
+    world = Courses()
+    world.post(AF, "🚀Київщина: «Бандероль» у напрямку Броварів.")
+    first = world.last_id(AF)
+    # "Вишгород!" answers the Banderol message: no rule knows it, the thread does.
+    assert of(world.post(AF, "🚀Вишгород!", after=400, reply_to=first), "banderol") == []
+    # A reply is the same Banderol: never "Ще бандероль".
+    assert world.post(AF, "🚀Київщина: «Бандероль» у напрямку Броварів.", after=400, reply_to=first) == []
+    # A reply in the thread saying nothing is tracked withdraws the warning.
+    world.post(MON, "Бандероль на Бровари/Київ.", after=1)
+    withdrawn = world.post(MON, "не фіксується", after=30, reply_to=world.last_id(MON))
+    assert of(withdrawn, "banderol") == [("lowered", "none", "nearby")]
+
+
+def test_nothing_tracked_outside_the_thread_is_not_about_the_course():
+    world = Courses()
+    world.post(MON, "Бандероль на Бровари/Київ.")
+    assert of(world.post(MON, "чисто", after=30), "banderol") == []
+
+
+def test_jet_drones_speak_only_over_the_city():
+    world = Courses()
+    suburb = world.post(AF, "🏍 Реактивний БпЛА повз Вишневе курсом на Київ.")
+    assert of(suburb, "jet_drone") == [("raised", "attention", "inbound_region")]
+    city = world.post(AF, "🏍 Київ: реактивний БпЛА на Оболонь", after=120)
+    assert of(city, "jet_drone") == [("raised", "take_cover", "inbound_home")]
+    # Over another city, with the same words: nothing.
+    assert world.post(AF, "🏍 Дніпро Реактивний БпЛА над містом!", after=10) == []
+    assert of(world.post(AF, "🏍 Реактивний БпЛА над Києвом!", after=400), "jet_drone") == [
+        ("repeat", "take_cover", "inbound_home")
+    ]
+
+
+def test_a_stale_message_is_ignored():
+    world = Courses()
+    world.now += timedelta(seconds=300)
+    message = IncomingMessage(5000, world.now - timedelta(seconds=300), "🏍 Київ: реактивний БпЛА на Оболонь")
+    publications = world.processors[AF].handle(message, world.now - timedelta(seconds=299))
+    assert world.situation.feed(AF, publications, world.now) == []
+
+
+def test_courses_are_validated():
+    with pytest.raises(ConfigError, match="situation.courses.ballistic"):
+        parse_config({"chats": CHATS, "situation": {"home": "київ", "sources": {"a": {}}, "courses": {"ballistic": None}}})
+    with pytest.raises(ConfigError, match="situation.courses.x.home: matches empty text"):
+        parse_config({"chats": CHATS, "situation": {"home": "київ", "sources": {"a": {}}, "courses": {"x": {"home": "y*"}}}})
+    with pytest.raises(ConfigError, match="situation.courses.x: expected only"):
+        parse_config({"chats": CHATS, "situation": {"home": "київ", "sources": {"a": {}}, "courses": {"x": {"loud": True}}}})
+    config = parse_config(
+        {"chats": CHATS, "situation": {"home": "київ", "sources": {"a": {}}, "courses": {"x": {"inbound_hold": 60}}}}
+    )
+    assert config.situation.courses["x"].inbound_hold == timedelta(seconds=60)

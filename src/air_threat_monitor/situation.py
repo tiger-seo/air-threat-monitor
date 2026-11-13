@@ -3,7 +3,9 @@
 Rules say what one message is ("a ballistic missile toward Kyiv"). This
 module keeps the course of a ballistic threat across messages and sources
 and, together with the air-alert level, turns it into a severity for the
-home. It knows nothing about rooms, volume or night: that stays with the
+home. Weapons known only by their course (Banderol, jet drones) are tracked
+the same way by `Course`, without the alert level; `Interpreter` holds them
+all. It knows nothing about rooms, volume or night: that stays with the
 consumer.
 
 Pure: events and the clock come in, decisions go out.
@@ -11,7 +13,7 @@ Pure: events and the clock come in, decisions go out.
 
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -42,6 +44,23 @@ class SourceConfig:
 
 
 @dataclass(frozen=True)
+class CourseConfig:
+    """A threat known only from its course ("Бандероль курсом на Київ").
+
+    There is no threat announcement and no all-clear: an episode lasts while
+    messages name places near the home, and ends `episode_timeout` after the
+    last one.
+    """
+
+    episode_timeout: timedelta = timedelta(minutes=30)
+    inbound_hold: timedelta = timedelta(minutes=10)
+    repeat_interval: timedelta = timedelta(minutes=5)
+    # Narrower places that mean "at us" for this threat ("над Києвом"); with
+    # it, the general home and region both count as the region.
+    home: re.Pattern[str] | None = None
+
+
+@dataclass(frozen=True)
 class SituationConfig:
     home: re.Pattern[str]
     region: re.Pattern[str] | None
@@ -51,6 +70,53 @@ class SituationConfig:
     descent_hold: timedelta = timedelta(minutes=2)
     repeat_interval: timedelta = timedelta(seconds=60)
     stale_after: timedelta = timedelta(seconds=120)
+    # Threats tracked by course, by the event kind of their rules; the kind
+    # is also the threat's topic.
+    courses: dict[str, CourseConfig] = field(default_factory=dict)
+
+
+_COURSE_NAME = re.compile(r"[a-z][a-z0-9_]*")
+
+
+def _seconds(where: str, data: dict, keys: Sequence[str]) -> dict[str, timedelta]:
+    seconds = {}
+    for key in keys:
+        value = data.get(key)
+        if value is None:
+            continue
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+            raise ConfigError(f"{where}.{key}: expected a positive number of seconds")
+        seconds[key] = timedelta(seconds=value)
+    return seconds
+
+
+def _parse_courses(where: str, data: Any) -> dict[str, CourseConfig]:
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise ConfigError(f"{where}: expected a mapping of event kinds")
+    durations = ("episode_timeout", "inbound_hold", "repeat_interval")
+    courses = {}
+    for name, body in data.items():
+        name = str(name)
+        if not _COURSE_NAME.fullmatch(name) or name == "ballistic":
+            raise ConfigError(f"{where}.{name}: expected an event kind other than 'ballistic'")
+        body = {} if body is None else body
+        if not isinstance(body, dict) or set(body) - {*durations, "home"}:
+            raise ConfigError(f"{where}.{name}: expected only home, {', '.join(durations)}")
+        home = None
+        if body.get("home") is not None:
+            raw = body["home"]
+            if not isinstance(raw, str) or not raw:
+                raise ConfigError(f"{where}.{name}.home: expected a regular expression")
+            try:
+                home = re.compile(raw)
+            except re.error as error:
+                raise ConfigError(f"{where}.{name}.home: invalid regular expression: {error}") from error
+            if home.search(""):
+                raise ConfigError(f"{where}.{name}.home: matches empty text, so every place would count")
+        courses[name] = CourseConfig(home=home, **_seconds(f"{where}.{name}", body, durations))
+    return courses
 
 
 def parse_situation(data: Any, chat_names: set[str]) -> SituationConfig:
@@ -58,7 +124,7 @@ def parse_situation(data: Any, chat_names: set[str]) -> SituationConfig:
     if not isinstance(data, dict):
         raise ConfigError(f"{where}: expected a mapping")
     durations = ("episode_timeout", "inbound_hold", "descent_hold", "repeat_interval", "stale_after")
-    unknown = set(data) - {"home", "region", "sources", *durations}
+    unknown = set(data) - {"home", "region", "sources", "courses", *durations}
     if unknown:
         raise ConfigError(f"{where}: unknown keys: {sorted(unknown)}")
 
@@ -92,15 +158,13 @@ def parse_situation(data: Any, chat_names: set[str]) -> SituationConfig:
                 raise ConfigError(f"{where}.sources.{name}.{key}: expected true or false")
         sources[name] = SourceConfig(**body)
 
-    seconds = {}
-    for key in durations:
-        value = data.get(key)
-        if value is None:
-            continue
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
-            raise ConfigError(f"{where}.{key}: expected a positive number of seconds")
-        seconds[key] = timedelta(seconds=value)
-    return SituationConfig(home=pattern("home", True), region=pattern("region", False), sources=sources, **seconds)
+    return SituationConfig(
+        home=pattern("home", True),
+        region=pattern("region", False),
+        sources=sources,
+        courses=_parse_courses(f"{where}.courses", data.get("courses")),
+        **_seconds(where, data, durations),
+    )
 
 
 def _iso(when: datetime) -> str:
@@ -296,3 +360,191 @@ class Situation:
         decision = self._decision(now, "clear", cause)
         decision.update(peak=peak, since=_iso(since) if since else None)
         return [decision]
+
+
+class Course:
+    """Tracks one threat known only from its course, such as "Бандероль" or a jet drone.
+
+    Only messages that name a place near the home count: elsewhere the same
+    weapon flies every day. The severity follows the place: the home gives
+    "take_cover", the region "attention"; each holds `inbound_hold` after the
+    last such message. A reply in a thread about the weapon continues the
+    episode; one about nothing tracked ("не фікс") withdraws the warning. The
+    episode ends `episode_timeout` after the last message that counted.
+    Decisions have the same fields as the ballistic ones.
+    """
+
+    def __init__(self, kind: str, config: CourseConfig, situation: SituationConfig):
+        self.kind = kind
+        self.config = config
+        self.situation = situation
+        self._severity = NONE
+        self._last_emit: datetime | None = None
+        self._reset()
+
+    def _reset(self) -> None:
+        self._open = False
+        self._since: datetime | None = None
+        self._last_activity: datetime | None = None
+        self._inbound_until: datetime | None = None
+        self._inbound_scope: str | None = None
+        self._ids: dict[str, set[int]] = {}
+        self._peak = NONE
+
+    def tick(self, now: datetime) -> list[dict]:
+        if not self._open:
+            return []
+        if now - self._last_activity > self.config.episode_timeout:
+            return self._close(now, {"reason": "timeout"})
+        return self._evaluate(now, {"reason": "hold_expired"}, repeat=False)
+
+    def feed(self, source: str, publications: Sequence[Publication], now: datetime) -> list[dict]:
+        if source not in self.situation.sources or not publications:
+            return []
+        when = datetime.strptime(publications[0].payload["date"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        if now - when > self.situation.stale_after:
+            return []
+        message = publications[0].payload
+        ids = self._ids.setdefault(source, set())
+        is_reply = message.get("reply_to") is not None and message.get("reply_to") in ids
+        events = [p.payload for p in publications if p.kind == "event"]
+        ours = [e for e in events if e["kind"] == self.kind]
+        cause = {"source": source, "id": message["id"], "text": message["text"]}
+
+        if ours:
+            scopes = [self._scope(e["match"]) for e in ours]
+            scope = "home" if "home" in scopes else "region" if "region" in scopes else None
+            if scope is None and not (is_reply and self._open):
+                return []
+            ids.add(message["id"])
+            self._touch(now)
+            self._inbound(scope, now)
+            # A reply follows the same weapon; only a new message is another one.
+            return self._evaluate(now, {"reason": self.kind, **cause}, repeat=scope == "home" and not is_reply)
+
+        if not self._open or not is_reply:
+            return []
+        ids.add(message["id"])
+        if any(e["kind"] == NOTHING_TRACKED for e in events):
+            self._inbound_until = self._inbound_scope = None
+            return self._evaluate(now, {"reason": NOTHING_TRACKED, **cause}, repeat=False)
+        if events:
+            return []
+        # A message no rule knows, in a thread about this weapon: "Вишгород!".
+        self._touch(now)
+        self._inbound(self._scope(message["text"]), now)
+        return self._evaluate(now, {"reason": "reply", **cause}, repeat=False)
+
+    def _scope(self, text: str) -> str | None:
+        own_home = self.config.home
+        if own_home is not None and own_home.search(text):
+            return "home"
+        if self.situation.home.search(text):
+            return "region" if own_home is not None else "home"
+        if self.situation.region is not None and self.situation.region.search(text):
+            return "region"
+        return None
+
+    def _touch(self, now: datetime) -> None:
+        if not self._open:
+            self._open = True
+            self._since = now
+        self._last_activity = now
+
+    def _inbound(self, scope: str | None, now: datetime) -> None:
+        if scope is None:
+            return
+        home_active = self._inbound_scope == "home" and self._inbound_until and now < self._inbound_until
+        if scope == "region" and home_active:
+            return
+        self._inbound_scope = scope
+        self._inbound_until = now + self.config.inbound_hold
+
+    def state(self, now: datetime) -> str:
+        if not self._open:
+            return "idle"
+        if self._inbound_until and now < self._inbound_until:
+            return f"inbound_{self._inbound_scope}"
+        return "nearby"
+
+    def severity(self, now: datetime) -> str:
+        return {"inbound_home": TAKE_COVER, "inbound_region": ATTENTION}.get(self.state(now), NONE)
+
+    def snapshot(self, now: datetime, alert_level: str | None = None) -> dict:
+        return {
+            "threat": self.kind,
+            "state": self.state(now),
+            "severity": self.severity(now),
+            "alert_level": alert_level,
+            "since": _iso(self._since) if self._since else None,
+            "at": _iso(now),
+        }
+
+    def _decision(self, now: datetime, change: str, cause: dict) -> dict:
+        decision = self.snapshot(now)
+        decision.update(change=change, peak=self._peak, source=None, id=None, text=None)
+        decision.update(cause)
+        self._last_emit = now
+        return decision
+
+    def _evaluate(self, now: datetime, cause: dict, repeat: bool) -> list[dict]:
+        severity = self.severity(now)
+        previous, self._severity = self._severity, severity
+        if SEVERITIES.index(severity) > SEVERITIES.index(self._peak):
+            self._peak = severity
+        if severity != previous:
+            raised = SEVERITIES.index(severity) > SEVERITIES.index(previous)
+            return [self._decision(now, "raised" if raised else "lowered", cause)]
+        if repeat and severity == TAKE_COVER and now - self._last_emit >= self.config.repeat_interval:
+            return [self._decision(now, "repeat", cause)]
+        return []
+
+    def _close(self, now: datetime, cause: dict) -> list[dict]:
+        peak, since = self._peak, self._since
+        self._reset()
+        self._severity = NONE
+        decision = self._decision(now, "clear", cause)
+        decision.update(peak=peak, since=_iso(since) if since else None)
+        return [decision]
+
+
+class Interpreter:
+    """The ballistic threat and every threat tracked by course, side by side.
+
+    Each decision carries its threat in "threat", which is also its topic.
+    """
+
+    def __init__(self, config: SituationConfig):
+        self.ballistic = Situation(config)
+        self.courses = {kind: Course(kind, course, config) for kind, course in config.courses.items()}
+
+    @property
+    def threats(self) -> list[str]:
+        return ["ballistic", *self.courses]
+
+    @property
+    def alert_level(self) -> str | None:
+        return self.ballistic.alert_level
+
+    def set_alert_level(self, level: str | None, now: datetime) -> list[dict]:
+        return self.ballistic.set_alert_level(level, now)
+
+    def tick(self, now: datetime) -> list[dict]:
+        decisions = self.ballistic.tick(now)
+        for course in self.courses.values():
+            decisions += course.tick(now)
+        return decisions
+
+    def feed(self, source: str, publications: Sequence[Publication], now: datetime) -> list[dict]:
+        decisions = self.ballistic.feed(source, publications, now)
+        for course in self.courses.values():
+            decisions += course.feed(source, publications, now)
+        return decisions
+
+    def idle(self, now: datetime) -> bool:
+        return all(t.state(now) == "idle" for t in (self.ballistic, *self.courses.values()))
+
+    def snapshot(self, threat: str, now: datetime) -> dict:
+        if threat == "ballistic":
+            return self.ballistic.snapshot(now)
+        return self.courses[threat].snapshot(now, self.ballistic.alert_level)

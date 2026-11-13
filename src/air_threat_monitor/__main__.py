@@ -21,7 +21,8 @@ EXIT_OK = 0
 EXIT_CONFIG = 1
 EXIT_LOGIN_NEEDED = 2
 
-SITUATION_TOPIC = "ballistic"
+# Names of the threats on the status page.
+THREAT_NAMES = {"ballistic": "Балістика", "banderol": "Бандероль", "jet_drone": "Реактивні БпЛА"}
 SITUATION_TICK = 5  # seconds between checks of the decision module's timers
 LOGIN_RETRY = 5  # seconds before connecting again after the session was lost
 CONNECT_RETRY = 15  # seconds before trying again when Telegram cannot be reached at start
@@ -48,7 +49,7 @@ def _client(settings: Settings, flood_sleep_threshold: int = 0):
 async def run(settings: Settings, dry_run: bool) -> int:
     from .mqtt import DryRunPublisher, MqttPublisher
     from .processor import ChatProcessor
-    from .situation import Situation
+    from .situation import Interpreter
     from .telegram import LoginLost, listen
 
     config = load_config(settings.rules)
@@ -67,7 +68,7 @@ async def run(settings: Settings, dry_run: bool) -> int:
             settings.topic_prefix,
         )
     # The decision module, when the rules file describes the home.
-    situation = Situation(config.situation) if config.situation is not None else None
+    situation = Interpreter(config.situation) if config.situation is not None else None
     ticker = None
 
     def utcnow() -> datetime:
@@ -75,10 +76,11 @@ async def run(settings: Settings, dry_run: bool) -> int:
 
     def decide(decisions: list[dict]) -> None:
         for decision in decisions:
-            publisher.set_state(SITUATION_TOPIC, decision)
-            publisher.publish_event(f"{SITUATION_TOPIC}/event", decision)
+            publisher.set_state(decision["threat"], decision)
+            publisher.publish_event(f"{decision['threat']}/event", decision)
             log.info(
-                "situation: %s %s (%s%s)",
+                "situation: %s %s %s (%s%s)",
+                decision["threat"],
                 decision["change"],
                 decision["severity"],
                 decision["reason"],
@@ -105,9 +107,10 @@ async def run(settings: Settings, dry_run: bool) -> int:
             facts = [("Версія", __version__), ("Брокер MQTT", publisher.description)]
             facts += [(name, f"останнє повідомлення {p.last_id or '—'}") for name, p in processors.items()]
             if situation is not None:
-                now = situation.snapshot(utcnow())
-                facts.append(("Балістика", f"{now['state']}, {now['severity']}"))
-                facts.append(("Рівень тривоги", now["alert_level"] or "невідомий"))
+                for threat in situation.threats:
+                    now = situation.snapshot(threat, utcnow())
+                    facts.append((THREAT_NAMES.get(threat, threat), f"{now['state']}, {now['severity']}"))
+                facts.append(("Рівень тривоги", situation.alert_level or "невідомий"))
             return facts
 
         login = Login()
@@ -120,7 +123,8 @@ async def run(settings: Settings, dry_run: bool) -> int:
     if situation is not None:
         # Overwrites whatever a previous run left retained: after a restart
         # nothing is known about a threat in progress.
-        publisher.set_state(SITUATION_TOPIC, situation.snapshot(utcnow()))
+        for threat in situation.threats:
+            publisher.set_state(threat, situation.snapshot(threat, utcnow()))
         if settings.alert_level_topic:
             loop = asyncio.get_running_loop()
 
@@ -131,7 +135,7 @@ async def run(settings: Settings, dry_run: bool) -> int:
                 decide(decisions)
                 if not decisions:
                     # No change of severity, but the retained state shows the level.
-                    publisher.set_state(SITUATION_TOPIC, situation.snapshot(utcnow()))
+                    publisher.set_state("ballistic", situation.snapshot("ballistic", utcnow()))
 
             publisher.subscribe(settings.alert_level_topic, lambda payload: loop.call_soon_threadsafe(on_level, payload))
         else:

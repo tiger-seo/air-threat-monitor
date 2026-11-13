@@ -19,7 +19,7 @@ chats:
   kpszsu:
     poll_interval: 3
     max_length: 200
-    watch: '(?i)баліст|ракет|відбій|загроза (?!застосування авіаційних)'
+    watch: '(?i)баліст|ракет|відбій|загроза (?!застосування авіаційних)|бандерол|реактив'
     rules:
       - kind: ballistic_clear
         pattern: 'Відбій загрози застосування\s+балістичного'
@@ -44,6 +44,16 @@ chats:
       # "Ще 2 ракети на Київ!"
       - kind: missile
         pattern: '(?im)^(?:ще\s+)?(?:\d+\s+)?ракет[аи]\s+(?P<route>[^.!\n]+)'
+      # Threats known only by their course. The whole line is the match, so a
+      # region in front counts as a place ("Київщина: Бандероль курсом на
+      # Кагарлик"). "Бандероль", "ББ «Бандероль»", "Баражуючі боєприпаси
+      # «Бандероль»", "S8000 Бандероль/Дань-Т" (the last only in long summaries).
+      - kind: banderol
+        pattern: '(?im)^[^\n]*(?:бандерол|s-?8000)[^\n]*'
+      # "Реактивний БпЛА курсом на Київ з півночі.", "Реактивні БпЛА ...",
+      # "Реактивний курсом на Рівне".
+      - kind: jet_drone
+        pattern: '(?im)^[^\n]*реактивн(?:ий|і|их)(?!\w)[^\n]*'
 
   # Unofficial Kyiv monitoring channel: informal lower-case wording, almost
   # everything in it concerns Kyiv and its suburbs. Wordings checked on 30 days
@@ -52,7 +62,7 @@ chats:
   kyiv_m0nitoring:
     poll_interval: 3
     max_length: 120
-    watch: '(?i)баліст|ракет|спуск|загроз|циркон|іскандер|онікс|відбій|чисто|фікс'
+    watch: '(?i)баліст|ракет|спуск|загроз|циркон|іскандер|онікс|відбій|чисто|фікс|бандерол|реактив'
     rules:
       # "Загроза балістики з Брянська.", "Загроза з Воронежа.", "знову загроза
       # балістики", "Повторно дали загрозу балістики."
@@ -85,10 +95,20 @@ chats:
       # drones, so it means something only during a ballistic threat.
       - kind: nothing_tracked
         pattern: '(?im)^(?:чисто(?:\s+по\s+ракетам)?|не\s+фікс\w*(?:\s+ракет[^.\n]*)?|без\s+(?:загроз|фіксацій\s+ракет)|ні(?:,\s*(?:поспішили|київ\s+обходить[^.\n]*))?|все\s+ж\s+таки\s+не\s+балістика)[.!]*$'
+      # "Бандероль на Бровари/Київ.", "бандероль біля вишгорода, увага"
+      - kind: banderol
+        pattern: '(?im)^[^\n]*бандерол[^\n]*'
+      # "реактив на вишгород підстанцію", "реактиви по морю в бік вишгорода/києва",
+      # "3 реактива на київ". Not a report of the past: "під києвом був реактив,
+      # не фікс вже", "реактив збили".
+      - kind: jet_drone
+        pattern: '(?im)^(?![^\n]*(?:(?<!\w)був(?!\w)|не\s+фікс\w*\s+вже|збил|збит|мінус))[^\n]*(?<!\w)реактив(?:и|а|ний|ні)?(?!\w)[^\n]*'
 
-# What the events mean for the home (ballistic threats only, for now).
+# What the events mean for the home.
 #
 # home: places that mean "at us": the city, its suburbs and districts.
+#   "Київського водосховища", "Київської області" are not the city, nor are
+#   "Подільськ", "Кам'янець-Подільський" the district Поділ.
 # region: places near enough to pay attention.
 # sources.<chat>.official: its all-clear ends the threat.
 # sources.<chat>.about_home: the chat writes about the home area only, so its
@@ -99,10 +119,25 @@ chats:
 #
 # DRAFT of 2026-11-12: the list of places is not yet approved by the owner.
 situation:
-  home: '(?i)ки[єїі]в(?!щин)|столиц|передміст|бровар|бориспіл|вишгород|ірп[іе]н|\bбуч[аіу]\b|вишнев|дарниц|троєщин|оболон|позняк|осокорк|печерськ|\bпод[іо]л|шулявк|нивк|святошин|борщаг|жулян|солом.янк|виноградар|теремк|голосі|(?:лів|прав)\w+\s+берег|\bна\s+(?:лівий|правий)\b'
-  region: '(?i)київщин|київськ\w+\s+област|біл\w+\s+церкв|васильк|обух|фаст[іо]в|трип[іо]л|наливайківк|макар[іо]в|українк'
+  home: '(?i)ки[єїі]в(?!щин|ськ)|столиц|передміст|бровар|бориспіл|вишгород|ірп[іе]н|\bбуч[аіу]\b|вишнев|дарниц|троєщин|оболон|позняк|осокорк|печерськ|\bпод(?:іл|ол(?:і|ом|у))\b|шулявк|нивк|святошин|борщаг|жулян|солом.янк|виноградар|теремк|голосі|(?:лів|прав)\w+\s+берег|\bна\s+(?:лівий|правий)\b'
+  region: '(?i)київщин|київськ\w+\s+(?:област|водосховищ)|біл\w+\s+церкв|васильк|обух|фаст[іо]в|трип[іо]л|наливайківк|макар[іо]в|українк'
   sources:
     kpszsu:
       official: true
     kyiv_m0nitoring:
       about_home: true
+  # Threats known only by their course, by the event kind of their rules; the
+  # kind is also the topic (air_threat/<kind>). Only messages that name a place
+  # of home or region count. Durations in seconds: episode_timeout (the episode
+  # ends this long after the last such message, 1800), inbound_hold (600),
+  # repeat_interval (300; a reply follows the same weapon and never repeats).
+  # home: narrower places that mean "at us" for this threat; the general home
+  #   then counts as the region.
+  courses:
+    banderol:
+    # Jet drones head for Kyiv or a suburb about 16 times a day (32 days to
+    # 2026-11-13): only a drone over the city itself is "at us". The channel
+    # puts the city first ("Київ: реактивний БпЛА …", "Київ Реактивний БпЛА
+    # над містом!"; other cities write "Дніпро … над містом"), or "над Києвом".
+    jet_drone:
+      home: '(?im)^\W*київ(?!\w)|над\s+(?:києвом|столицею)|в\s+межах\s+києва'

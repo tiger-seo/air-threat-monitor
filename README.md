@@ -1,6 +1,6 @@
 # air-threat-monitor
 
-Follows air threats to a home in Ukraine. It listens to configured Telegram channels with a user-account session, matches each message against rules, follows a ballistic threat across messages and channels, and publishes messages, rule matches and decisions to MQTT. What to do with a decision (announce it or not, where, how loud) is left to the consumer (Home Assistant).
+Follows air threats to a home in Ukraine. It listens to configured Telegram channels with a user-account session, matches each message against rules, follows ballistic threats and weapons tracked by their course (Banderol, jet drones) across messages and channels, and publishes messages, rule matches and decisions to MQTT. What to do with a decision (announce it or not, where, how loud) is left to the consumer (Home Assistant).
 
 It was called `telegram-mqtt-gateway` until 2026-11-12; "the gateway" in the code and below means the part that listens to Telegram. Sources other than Telegram are meant to be added as modules that feed the same decisions.
 
@@ -33,6 +33,18 @@ With a `situation` section in the rules file, the gateway also follows a ballist
 | `impact` | "спуск": the missile is in its terminal phase; lasts 2 minutes |
 
 `change` is `raised`, `lowered`, `repeat` (the same severity confirmed by a new message, at most once a minute) or `clear`. A `clear` carries `peak`, the highest severity of the threat, so the consumer can skip the all-clear of a threat it never announced. The threat ends with the official all-clear or after an hour without missile messages; "чисто" or an unofficial all-clear only withdraws the current warning.
+
+### Threats known by their course
+
+Some weapons have no threat announcement and no all-clear: the channels only say where each one flies ("Бандероль курсом на Київ", "Київ: реактивний БпЛА на Оболонь"), and over other regions they fly every day. `situation.courses` lists them by the event kind of their rules; each has its own topic with the same payload, `air_threat/<kind>` and `air_threat/<kind>/event` (`banderol`, `jet_drone` in the example). The alert level plays no part.
+
+| Severity | When |
+|---|---|
+| `none` | no message names a place near the home (state `idle`), or the last one is more than 10 minutes old (`nearby`) |
+| `attention` | toward a `region` place; 10 minutes |
+| `take_cover` | toward a `home` place; 10 minutes. A course may set its own, narrower `home` (jet drones: over the city itself); the general home then counts as the region |
+
+Only messages that name a place of home or region count; a reply in their thread counts too, including a bare place name ("Вишгород!"). A reply is the same weapon, so it never gives a `repeat`; another message toward the home does, at most once in 5 minutes. A reply saying nothing is tracked ("не фіксується") withdraws the warning. The episode ends 30 minutes after the last message that counted.
 
 `replay` runs the saved histories through the same code and prints every decision, which is how a change to the rules or the places is judged:
 
