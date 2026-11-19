@@ -288,6 +288,13 @@ def test_home_places_of_the_example():
     for text in ("на Поділ", "на Подолі"):
         assert home.search(text), text
 
+    # The places the owner named on 2026-11-20: Obolon, the right bank, Vyshhorod, Minskyi massif.
+    for text in ("на Оболонь", "Оболоні", "правий берег", "на правому березі", "Правобережжя", "над Вишгородом", "Мінський масив", "Мінського масиву", "на мінський"):
+        assert home.search(text), text
+    # Minsk in Belarus is not the Kyiv massif.
+    for text in ("з Мінська", "Мінська область", "Мінськ"):
+        assert not home.search(text), text
+
 
 # --- Threats known by their course --------------------------------------------
 
@@ -351,6 +358,34 @@ def test_nothing_tracked_outside_the_thread_is_not_about_the_course():
     world = Courses()
     world.post(MON, "Бандероль на Бровари/Київ.")
     assert of(world.post(MON, "чисто", after=30), "banderol") == []
+
+
+def test_jet_drones_over_obolon_and_the_minskyi_massif_speak_without_the_city_name():
+    # 2026-10-30, kpszsu: "Реактивний БпЛА на Мінський масив", no "Київ:" in front.
+    assert of(Courses().post(AF, "🏍 Реактивний БпЛА на Мінський масив"), "jet_drone") == [
+        ("raised", "take_cover", "inbound_home")
+    ]
+    assert of(Courses().post(AF, "🏍 Реактивний БпЛА на Оболонь"), "jet_drone") == [
+        ("raised", "take_cover", "inbound_home")
+    ]
+    # Vyshhorod: a drone flying at it or through it toward the city keeps going south, over or
+    # near the owner's home; one near it or leaving the city does not.
+    for text in (
+        "🏍 Реактивний БпЛА на Вишгород з півночі",
+        "🏍 Київщина: реактивний БпЛА курсом на Вишгород",
+        "🏍 Реактивний БпЛА над Київським водосховищем у напрямку Вишгорода",
+        "🏍 Реактивний БпЛА через Вишгород у напрямку центру Києва.",
+    ):
+        assert of(Courses().post(AF, text), "jet_drone") == [("raised", "take_cover", "inbound_home")], text
+    assert of(Courses().post(MON, "реактиви по морю в бік вишгорода/києва"), "jet_drone") == [
+        ("raised", "take_cover", "inbound_home")
+    ]
+    for chat, text in (
+        (AF, "🏍 Реактивний БпЛА з Києва через Вишгород на Димер"),
+        (AF, "🏍 Реактивний БпЛА повз Вишгород на Димер"),
+        (MON, "реактив біля вишгорода"),
+    ):
+        assert of(Courses().post(chat, text), "jet_drone") == [("raised", "attention", "inbound_region")], text
 
 
 def test_jet_drones_speak_only_over_the_city():

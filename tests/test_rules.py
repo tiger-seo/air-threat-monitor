@@ -295,11 +295,111 @@ def monitoring_rules():
         ("2 ракети на київ", [("ballistic_missile", {"route": "київ"})]),
         ("буде відбій", []),
         ("Відбій.", []),
+        # 2026-11-17: the threat is taken back in the same message.
+        ("повторна загроза балістики\n\nвсе ж відбій, помилка", [("nothing_tracked", {})]),
         ("❌ жодних вагомих попереджень щодо балістичного удару по нашому регіону не надходило.", []),
     ],
 )
 def test_monitoring_channel(monitoring_rules, raw, expected):
     assert [(event.kind, event.fields) for event in events(raw, monitoring_rules)] == expected
+
+
+# --- kpszsu, 2026-11-17: a fast target is ballistic when it flies at Kyiv -----
+
+
+@pytest.mark.parametrize(
+    ("raw", "route"),
+    [
+        ("🚀Швидкісна ціль на Чернігівщині у напрямку Києва", "на Чернігівщині у напрямку Києва"),
+        ("🚀 Ще швидкісна ціль на Київ з півночі", "на Київ з півночі"),
+        ("Швидкісна ціль на Сумщині, курсом на Чернігівщину, Київщину!", "на Сумщині, курсом на Чернігівщину, Київщину"),
+    ],
+)
+def test_fast_target_toward_kyiv_is_a_ballistic_missile(rules, raw, route):
+    assert [(event.kind, event.fields) for event in events(raw, rules)] == [("ballistic_missile", {"route": route})]
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["🚀Швидкісна ціль на Харківщині", "🚀Швидкісна ціль на Запоріжжя", "🚀Швидкісна ціль на Донеччині, курс на північ."],
+)
+def test_fast_target_elsewhere_gives_nothing(rules, raw):
+    assert events(raw, rules) == []
+
+
+# --- war_monitor, wordings of 2026-10-21..2026-11-19 ---------------------------
+
+
+@pytest.fixture(scope="module")
+def war_monitor_rules():
+    return load_config(EXAMPLE).chats["war_monitor"].rules
+
+
+THREAT = (
+    "🟣 Загроза балістики з Брянська. Увага.\n \nІмовірний пуск балістичних ракет комплексів «Іскандер» / С-400.\n"
+    "або робота ворожої ППО С-300.\n\nНе знаходьтесь під відкритим небом — це небезпечно!"
+)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (THREAT, [("ballistic_threat", {"from": "Брянська"})]),
+        ("🟣 Загроза балістики з Криму. Увага.", [("ballistic_threat", {"from": "Криму"})]),
+        ("⚪️ Відбій загрози балістики.", [("ballistic_clear", {})]),
+        ("⚪️ Відбій загрози балістики з Воронежа.", [("ballistic_clear", {})]),
+        ("‼️ Київ — спуск балістики! Друга", [("ballistic_descent", {"where": "Київ"})]),
+        ("‼️ Покров / Зеленодольськ— спуск балістики!", [("ballistic_descent", {"where": "Покров / Зеленодольськ"})]),
+        ("‼️ Обухів Українка  спуск балістики!", [("ballistic_descent", {"where": "Обухів Українка"})]),
+        ("☄ Вихід Брянськ", [("launch", {})]),
+        ("☄ Повторний вихід Брянськ", [("launch", {})]),
+        ("❗️ Вихід Циркону Курськ", [("launch", {}), ("hypersonic_missile", {})]),
+        ("❗️ 2х Циркони від Ніжина на Київ", [("hypersonic_missile", {})]),
+        ("❗️ Онікс-М від Ніжина на Київ", [("hypersonic_missile", {})]),
+        # Follow-ups and other messages are no new threat.
+        ("Загроза балістики триває.", []),
+        ("💥 Вибухи у Києві. Загроза балістики з Брянська та Курська триває.", []),
+        ("💥Удар балістикою по Дніпру.\nЗагроза балістики з Таганрогу триває.", []),
+        ("✈️ Вихід бортів Тактичної авіації на пускові рубежі над Кримом.", []),
+    ],
+)
+def test_war_monitor(war_monitor_rules, raw, expected):
+    assert [(event.kind, event.fields) for event in events(raw, war_monitor_rules)] == expected
+
+
+def test_war_monitor_threat_fits_the_length_limit():
+    chat = load_config(EXAMPLE).chats["war_monitor"]
+    assert [match.kind for match in chat.match(clean_text(THREAT))] == ["ballistic_threat"]
+
+
+# --- rocketskyiv, wordings of 2026-10-21..2026-11-19 ---------------------------
+
+
+@pytest.fixture(scope="module")
+def rocketskyiv_rules():
+    return load_config(EXAMPLE).chats["rocketskyiv"].rules
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("Загроза балістики з Брянська.", [("ballistic_threat", {"from": "Брянська"})]),
+        ("Балістика на Київ/передмістя.", [("ballistic_missile", {"route": "Київ/передмістя"})]),
+        ("2-3 ракети на Київщину.", [("ballistic_missile", {"route": "Київщину"})]),
+        ("48 годин США балістика.", [("strike_warning", {"hours": "48", "source": "США"})]),
+        ("48 годин отримали від США. \n\nРизик обстрілу американці відмітили як дуже високий.", [("strike_warning", {"hours": "48", "source": "США"})]),
+        ("24 години ГУР балістика.", [("strike_warning", {"hours": "24", "source": "ГУР"})]),
+        ("ГУР попереджає про удар цієї ночі.", [("strike_warning", {})]),
+        (
+            "⏱ За інформацією розвідки, активність балістичних установок ми очікуємо після ~01:30.",
+            [("strike_warning", {"after": "01:30"})],
+        ),
+        ("Без фіксацій.", []),
+        ("ще 2 ракети", []),
+    ],
+)
+def test_rocketskyiv(rocketskyiv_rules, raw, expected):
+    assert [(event.kind, event.fields) for event in events(raw, rocketskyiv_rules)] == expected
 
 
 # --- Rules file --------------------------------------------------------------
@@ -312,6 +412,7 @@ def test_example_file_loads():
     assert [rule.kind for rule in chat.rules] == [
         "ballistic_clear",
         "ballistic_threat",
+        "ballistic_missile",
         "ballistic_missile",
         "ballistic_missile",
         "ballistic_missile",

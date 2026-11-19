@@ -38,6 +38,13 @@ chats:
       # "Повторний пуск балістики на Київ", "Ще пуск балістики"
       - kind: ballistic_missile
         pattern: '(?i)пуск\w*\s+балістики(?:\s+(?P<route>[^.!\n]+))?'
+      # A "fast target" is what the channel calls a ballistic missile it cannot
+      # name yet: "Швидкісна ціль на Чернігівщині у напрямку Києва", "Ще швидкісна
+      # ціль на Київ з півночі" (2026-11-17, before any "Балістика на Київ"). Only
+      # when Kyiv or Kyivshchyna is named: the other 25 fast targets of 30 days
+      # flew at the front oblasts and Odesa and are not known to be ballistic.
+      - kind: ballistic_missile
+        pattern: '(?i)швидкісн\w+(?:\s+ціль)?\s+(?P<route>(?:на|в|у|над)\s+[^.!\n]*?ки[єїі]в[^.!\n]*)'
       - kind: cruise_missile
         pattern: '(?i)крилат(?:а|і|их)\s+ракет[аи]?\s+(?P<route>[^.!\n]+)'
       # A missile of an unnamed type: "Ракета на КИїв!", "Ще ракети на Київ",
@@ -66,8 +73,10 @@ chats:
     rules:
       # "Загроза балістики з Брянська.", "Загроза з Воронежа.", "знову загроза
       # балістики", "Повторно дали загрозу балістики."
+      # Not when the same message takes it back: "повторна загроза балістики /
+      # все ж відбій, помилка" (2026-11-17).
       - kind: ballistic_threat
-        pattern: '(?im)^(?:знову\s+|повторн\w+\s+(?:дали\s+)?)?загроз[ау]\s+(?:балістики(?:\s+зі?\s+(?P<from>[\w''-]+))?|зі?\s+(?P<from2>[\w''-]+))'
+        pattern: '(?im)(?!(?s:.*)помилк)^(?:знову\s+|повторн\w+\s+(?:дали\s+)?)?загроз[ау]\s+(?:балістики(?:\s+зі?\s+(?P<from>[\w''-]+))?|зі?\s+(?P<from2>[\w''-]+))'
       # The threat in one or two words: "балістика", "бал", "Балістика Воронеж."
       - kind: ballistic_threat
         pattern: '(?im)^(?:бал|бал+[іи]стика)(?:\s+(?P<from>воронеж\w*|брянс\w*|курс\w*))?[.!]*$'
@@ -94,6 +103,8 @@ chats:
       # "не фіксується", "Без загроз.", "Ні.", "ні, поспішили". Also said about
       # drones, so it means something only during a ballistic threat.
       - kind: nothing_tracked
+        pattern: '(?im)^все\s+ж\s+відбій,?\s+помилк\w*[.!]*$'
+      - kind: nothing_tracked
         pattern: '(?im)^(?:чисто(?:\s+по\s+ракетам)?|не\s+фікс\w*(?:\s+ракет[^.\n]*)?|без\s+(?:загроз|фіксацій\s+ракет)|ні(?:,\s*(?:поспішили|київ\s+обходить[^.\n]*))?|все\s+ж\s+таки\s+не\s+балістика)[.!]*$'
       # "Бандероль на Бровари/Київ.", "бандероль біля вишгорода, увага"
       - kind: banderol
@@ -103,6 +114,53 @@ chats:
       # не фікс вже", "реактив збили".
       - kind: jet_drone
         pattern: '(?im)^(?![^\n]*(?:(?<!\w)був(?!\w)|не\s+фікс\w*\s+вже|збил|збит|мінус))[^\n]*(?<!\w)реактив(?:и|а|ний|ні)?(?!\w)[^\n]*'
+
+  # Private channel of one person, a countrywide monitor. Recorded only (it is
+  # not under situation.sources): its threat and all-clear repeat kpszsu about
+  # 20 s later, and its author was silent from 2026-11-10 to 2026-11-19. What is
+  # its own: the per-missile "спуск" count, Zircon/Onyx courses, launches
+  # ("Вихід Брянськ"). Wordings checked on 30 days of history, 2026-11-19.
+  war_monitor:
+    poll_interval: 3
+    max_length: 250
+    watch: '(?i)баліст|ракет|спуск|циркон|онікс|іскандер|відбій'
+    rules:
+      # "Загроза балістики з Брянська. Увага." The follow-ups "Загроза балістики
+      # триває" and "…з Брянська та Курська триває." are not new threats.
+      - kind: ballistic_threat
+        pattern: '(?m)^Загроза балістики\s+зі?\s+(?P<from>[^.!\n]+?)\.\s*Увага'
+      - kind: ballistic_clear
+        pattern: '(?i)відбій\s+загрози\s+балістики'
+      # "Київ — спуск балістики! Друга", "Покров / Зеленодольськ— спуск балістики!",
+      # "Обухів Українка  спуск балістики!"
+      - kind: ballistic_descent
+        pattern: '(?im)^(?P<where>[^\n]*?)\s*(?:[—–-]\s*)?спуск\s+балістики'
+      # "Вихід Брянськ", "Повторний вихід Брянськ", "Виходи Курськ", "Вихід Циркону Курськ"
+      - kind: launch
+        pattern: '(?im)^\W*(?:(?:ще|повторн\w+|\w+ий)\s+)?вих[іо]д[и]?(?!\w)(?!\s+бортів)[^\n]*'
+      - kind: hypersonic_missile
+        pattern: '(?im)^[^\n]*(?:циркон|онікс)[^\n]*'
+
+  # Kyiv ballistic channel of the team behind kyiv_m0nitoring. Recorded only:
+  # its "Балістика на Київ/передмістя." is the phrase kyiv_m0nitoring repeats a
+  # few seconds earlier (25 times in 30 days, none without a copy). Its own are
+  # the warnings hours ahead ("48 годин США балістика", "24 години ГУР",
+  # "активність балістичних установок ми очікуємо після ~01:30"): 6 of the 7
+  # before 2026-11-17 were followed by a ballistic attack on Kyiv that night or
+  # the next. Wordings checked on 30 days of history, 2026-11-19.
+  rocketskyiv:
+    poll_interval: 3
+    max_length: 200
+    watch: '(?i)баліст|ракет|США|ГУР|розвідк'
+    rules:
+      - kind: ballistic_threat
+        pattern: '(?m)^Загроза балістики\s+зі?\s+(?P<from>[^.!\n]+)'
+      - kind: ballistic_missile
+        pattern: '(?im)^(?:ще\s+)?(?:\d+(?:-\d+)?\s+ракет\w*|балістика)\s+на\s+(?P<route>[^.!\n]+)'
+      - kind: strike_warning
+        pattern: '(?i)(?P<hours>\d+)\s*(?:год\w*\s+)?(?:отримали\s+від\s+)?(?P<source>США|ГУР)'
+      - kind: strike_warning
+        pattern: '(?i)ГУР\s+попереджає|очікуємо\s+після\s*~?(?P<after>\d{1,2}:\d{2})'
 
 # What the events mean for the home.
 #
@@ -119,7 +177,7 @@ chats:
 #
 # DRAFT of 2026-11-12: the list of places is not yet approved by the owner.
 situation:
-  home: '(?i)ки[єїі]в(?!щин|ськ)|столиц|передміст|бровар|бориспіл|вишгород|ірп[іе]н|\bбуч[аіу]\b|вишнев|дарниц|троєщин|оболон|позняк|осокорк|печерськ|\bпод(?:іл|ол(?:і|ом|у))\b|шулявк|нивк|святошин|борщаг|жулян|солом.янк|виноградар|теремк|голосі|(?:лів|прав)\w+\s+берег|\bна\s+(?:лівий|правий)\b'
+  home: '(?i)ки[єїі]в(?!щин|ськ)|столиц|передміст|бровар|бориспіл|вишгород|ірп[іе]н|\bбуч[аіу]\b|вишнев|дарниц|троєщин|оболон|позняк|осокорк|печерськ|\bпод(?:іл|ол(?:і|ом|у))\b|шулявк|нивк|святошин|борщаг|жулян|солом.янк|виноградар|теремк|голосі|(?:лів|прав)\w+\s+бер(?:ег|ез)\w*|(?:лів|прав)обереж\w*|\bна\s+(?:лівий|правий)\b|мінськ(?:ий|ого|ому|им)(?!\w)'
   region: '(?i)київщин|київськ\w+\s+(?:област|водосховищ)|біл\w+\s+церкв|васильк|обух|фаст[іо]в|трип[іо]л|наливайківк|макар[іо]в|українк'
   sources:
     kpszsu:
@@ -139,5 +197,12 @@ situation:
     # 2026-11-13): only a drone over the city itself is "at us". The channel
     # puts the city first ("Київ: реактивний БпЛА …", "Київ Реактивний БпЛА
     # над містом!"; other cities write "Дніпро … над містом"), or "над Києвом".
+    # Obolon and the Minskyi massif (the owner's districts, 2026-11-20) count
+    # without it ("Реактивний БпЛА на Мінський масив"): 13 more episodes in 32
+    # days, one a day more in the last week. Vyshhorod counts only when the drone
+    # flies at it or through it toward the city ("на Вишгород з півночі", "курсом
+    # на Вишгород/Київ", "через Вишгород у напрямку центру"): from the north it
+    # keeps going south, over or near the owner's home (2026-11-20). Not "біля
+    # Вишгорода", not "з Києва через Вишгород на Димер" (away from the city).
     jet_drone:
-      home: '(?im)^\W*київ(?!\w)|над\s+(?:києвом|столицею)|в\s+межах\s+києва'
+      home: '(?im)^\W*київ(?!\w)|над\s+(?:києвом|столицею)|в\s+межах\s+києва|оболон|мінськ(?:ий|ого|ому|им)|(?:на|[ув]\s+напрямку|в\s+бік|в\s+район)\s+вишгород|(?:через|повз)\s+вишгород\w*\s+(?:[ув]\s+напрямку\s+|на\s+)?(?:центр\w*|ки[єїі]в\w*|оболон\w*)'
