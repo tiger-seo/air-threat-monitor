@@ -58,6 +58,10 @@ class CourseConfig:
     # Narrower places that mean "at us" for this threat ("над Києвом"); with
     # it, the general home and region both count as the region.
     home: re.Pattern[str] | None = None
+    # Every message of the rules counts as "at us", whatever places it names:
+    # for a report with no place at all ("Ймовірно здійснено пуски крилатих
+    # ракет").
+    always_home: bool = False
 
 
 @dataclass(frozen=True)
@@ -102,8 +106,11 @@ def _parse_courses(where: str, data: Any) -> dict[str, CourseConfig]:
         if not _COURSE_NAME.fullmatch(name) or name == "ballistic":
             raise ConfigError(f"{where}.{name}: expected an event kind other than 'ballistic'")
         body = {} if body is None else body
-        if not isinstance(body, dict) or set(body) - {*durations, "home"}:
-            raise ConfigError(f"{where}.{name}: expected only home, {', '.join(durations)}")
+        if not isinstance(body, dict) or set(body) - {*durations, "home", "always_home"}:
+            raise ConfigError(f"{where}.{name}: expected only home, always_home, {', '.join(durations)}")
+        always_home = body.get("always_home", False)
+        if not isinstance(always_home, bool):
+            raise ConfigError(f"{where}.{name}.always_home: expected true or false")
         home = None
         if body.get("home") is not None:
             raw = body["home"]
@@ -115,7 +122,7 @@ def _parse_courses(where: str, data: Any) -> dict[str, CourseConfig]:
                 raise ConfigError(f"{where}.{name}.home: invalid regular expression: {error}") from error
             if home.search(""):
                 raise ConfigError(f"{where}.{name}.home: matches empty text, so every place would count")
-        courses[name] = CourseConfig(home=home, **_seconds(f"{where}.{name}", body, durations))
+        courses[name] = CourseConfig(home=home, always_home=always_home, **_seconds(f"{where}.{name}", body, durations))
     return courses
 
 
@@ -436,6 +443,8 @@ class Course:
         return self._evaluate(now, {"reason": "reply", **cause}, repeat=False)
 
     def _scope(self, text: str) -> str | None:
+        if self.config.always_home:
+            return "home"
         own_home = self.config.home
         if own_home is not None and own_home.search(text):
             return "home"

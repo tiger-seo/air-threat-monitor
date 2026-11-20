@@ -52,7 +52,9 @@ Only messages that name a place of home or region count; a reply in their thread
 .venv/Scripts/python -m air_threat_monitor replay --alert-level none
 ```
 
-Not covered: cruise missiles and drones give events but no decisions; after a restart a threat in progress is not known until its next message.
+Cruise missiles are a course too (`cruise_missile`; since 0.4.0). Their attacks are rare and massive, so an episode holds 30 minutes (`inbound_hold`) and ends 45 minutes after the last message. The warning hours ahead is a course of its own, `cruise_launch`: bombers launched ("відбулись пуски з тушок", the official "Ймовірно здійснено пуски крилатих ракет"); the launch messages name no place, so the course sets `always_home: true` (every message of its rules counts as at the home), holds the warning for the 3 hours of the whole attack and so is raised once per attack.
+
+Not covered: ordinary drones give events but no decisions; after a restart a threat in progress is not known until its next message.
 
 ## Monthly review
 

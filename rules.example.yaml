@@ -47,6 +47,18 @@ chats:
         pattern: '(?i)швидкісн\w+(?:\s+ціль)?\s+(?P<route>(?:на|в|у|над)\s+[^.!\n]*?ки[єїі]в[^.!\n]*)'
       - kind: cruise_missile
         pattern: '(?i)крилат(?:а|і|их)\s+ракет[аи]?\s+(?P<route>[^.!\n]+)'
+      # Cruise missiles in the short forms the channel uses: "КР на Хмельниччину
+      # (Шепетівка)", "Тернопільщина: КР на Збараж", "Групи ракет повз Шаргород
+      # (Вінниччина)", "Х-101 …". The whole line is the match, so a region in front
+      # counts as a place (the same as for the Banderol).
+      - kind: cruise_missile
+        pattern: '(?im)^(?![^\n]*(?:обходять|потенційн|повз\s+ки[єїі]в))[^\n]*(?:(?<!\w)кр(?!\w)|(?<!\w)х-?101|групи?\s+ракет)[^\n]*'
+      # The warning hours ahead: bombers have launched. 2026-11-20 04:51, official,
+      # 2 h before the first missiles over the Kyiv region. Not "У разі здійснення
+      # пусків …, входження очікується близько 06:30": that is the follow-up with
+      # the expected time, a reply to this message.
+      - kind: cruise_launch
+        pattern: '(?im)^[^\n]*здійснено\s+пуски\s+крилатих\s+ракет[^\n]*'
       # A missile of an unnamed type: "Ракета на КИїв!", "Ще ракети на Київ",
       # "Ще 2 ракети на Київ!"
       - kind: missile
@@ -96,6 +108,16 @@ chats:
         pattern: '(?im)^(?![^\n]*можлив)(?:знову\s+|повторн\w+\s+)?вих[іо]д\s+зі?\s+(?P<from>брянс\w+|курс\w+|воронеж\w*|міллеров\w*)[.!\s]*$'
       - kind: ballistic_threat
         pattern: '(?im)^повторні\s+виходи\s+балістики[.!\s]*$'
+      # Cruise missiles (the same as in kpszsu, with this channel's wording):
+      # "х-101 на вишгородський район", "група кр на бровари", "крилаті з півночі
+      # по морю". Not "поки що крилаті обходять київ" (2026-11-20: a message that
+      # they miss Kyiv), nor "потенційну загрозу Х-101" (a guess an hour ahead).
+      - kind: cruise_missile
+        pattern: '(?im)^(?![^\n]*(?:обходять|потенційн|повз\s+ки[єїі]в))[^\n]*(?:крилат\w+|(?<!\w)кр(?!\w)|(?<!\w)х-?101|калібр\w*)[^\n]*'
+      # Bombers launched: "відбулись пуски з тушок", "літаки ту-95/160 запустили
+      # понад 30 ракет". Not the Kalibr launches from the sea: they fly west.
+      - kind: cruise_launch
+        pattern: '(?im)^(?:відбул\w+\s+пуски\s+(?:з\s+тушок|х-?101)|літаки\s+ту-?95[^\n]*запустили)[^\n]*'
       # Only the launch area, as the whole message: "брянск", "Воронеж". With more
       # lines it is a relayed Russian alert ("Брянск / Ракетная опасность").
       - kind: ballistic_threat
@@ -222,7 +244,21 @@ situation:
   # repeat_interval (300; a reply follows the same weapon and never repeats).
   # home: narrower places that mean "at us" for this threat; the general home
   #   then counts as the region.
+  # cruise_missile: a mass attack is rare (the owner, 2026-11-20): 84 missiles on
+  #   2026-11-20, 79 shot down. They fly for hours and mostly west, past Kyiv, so an
+  #   episode holds 30 min (not 10) after the last message and ends 45 min after it.
+  # cruise_launch: bombers launched, a warning about 2 h ahead. Every message counts
+  #   (always_home, they name no place); one announcement per attack: the warning holds
+  #   3 h, so a second launch report in the same attack does not raise it again.
   courses:
+    cruise_missile:
+      inbound_hold: 1800
+      episode_timeout: 2700
+    cruise_launch:
+      always_home: true
+      inbound_hold: 10800
+      episode_timeout: 10800
+      repeat_interval: 21600
     banderol:
     # Jet drones head for Kyiv or a suburb about 16 times a day (32 days to
     # 2026-11-13): only a drone over the city itself is "at us". The channel

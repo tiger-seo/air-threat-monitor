@@ -401,6 +401,38 @@ def test_jet_drones_speak_only_over_the_city():
     ]
 
 
+def test_the_cruise_missile_attack_of_2026_11_20():
+    """Bombers launched at 04:41, the first missiles over the Kyiv region at 06:49, the second wave at 09:32."""
+    world = Courses()
+    launch = "⚠Увага!\n🚀Ймовірно здійснено пуски крилатих ракет повітряного базування зі стратегічних бомбардувальників!"
+    # The warning hours ahead, once: the unofficial channel first, the official one ten minutes later.
+    assert of(world.post(MON, "відбулись пуски з тушок"), "cruise_launch") == [("raised", "take_cover", "inbound_home")]
+    assert world.post(AF, launch, after=600) == []
+    # Launches from the sea fly west: nothing. A guess an hour ahead: nothing.
+    assert world.post(MON, "Відбулись пуски крилатих ракет Калібр.", after=2400) == []
+    assert world.post(MON, "Бровари, Біла Церква, Трипілля, Київ — реагуємо зараз вже на потенційну загрозу Х-101.", after=60) == []
+    # The first missiles named near Kyiv: the region.
+    region = world.post(AF, "Крилата ракета на Чернігівщині у напрямку Київщини", after=4400)
+    assert of(region, "cruise_missile") == [("raised", "attention", "inbound_region")]
+    # Over the Vyshhorod district: take cover.
+    home = world.post(MON, "х-101 на вишгородський район, дуже багато крилатих на полтавщину", after=240)
+    assert of(home, "cruise_missile") == [("raised", "take_cover", "inbound_home")]
+    # "The cruise missiles keep going round Kyiv" is not a missile at Kyiv.
+    assert world.post(MON, "поки що крилаті обходять київ", after=660) == []
+    # A new message about the home, five minutes after the first: one more.
+    again = world.post(MON, "група кр на бровари", after=540)
+    assert of(again, "cruise_missile") == [("repeat", "take_cover", "inbound_home")]
+    # 30 minutes with nothing about the home, then 15 more: the episode ends and says it was at the home.
+    assert of(world.wait(1800), "cruise_missile") == [("lowered", "none", "nearby")]
+    clear = world.wait(901)
+    assert of(clear, "cruise_missile") == [("clear", "none", "idle")]
+    assert clear[0]["peak"] == "take_cover"
+    # Nothing in the ballistic threat moved. The launch warning was said once and closed 3 hours
+    # after the last launch report.
+    assert [d for d in world.decisions if d["threat"] == "ballistic"] == []
+    assert [d["change"] for d in world.decisions if d["threat"] == "cruise_launch"] == ["raised", "clear"]
+
+
 def test_a_stale_message_is_ignored():
     world = Courses()
     world.now += timedelta(seconds=300)
@@ -420,3 +452,6 @@ def test_courses_are_validated():
         {"chats": CHATS, "situation": {"home": "київ", "sources": {"a": {}}, "courses": {"x": {"inbound_hold": 60}}}}
     )
     assert config.situation.courses["x"].inbound_hold == timedelta(seconds=60)
+    with pytest.raises(ConfigError, match="situation.courses.x.always_home: expected true or false"):
+        parse_config({"chats": CHATS, "situation": {"home": "київ", "sources": {"a": {}}, "courses": {"x": {"always_home": "yes"}}}})
+    assert not config.situation.courses["x"].always_home

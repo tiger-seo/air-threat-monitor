@@ -449,6 +449,56 @@ def test_monitoring_place_only_follow_up(monitoring_rules, raw, expected):
     assert [(event.kind, event.fields) for event in events(raw, monitoring_rules)] == expected
 
 
+# --- 2026-11-20: cruise missiles in the short forms, and the launch warnings ---------------
+
+
+LAUNCH_TEXT = (
+    "⚠Увага!\n🚀Ймовірно здійснено пуски крилатих ракет повітряного базування зі стратегічних бомбардувальників!\n"
+    "👀 Слідкуйте за нашими повідомленнями та не ігноруйте сигнали повітряної тривоги."
+)
+
+
+def kinds(raw, rules):
+    return sorted({event.kind for event in events(raw, rules)})
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (LAUNCH_TEXT, ["cruise_launch", "cruise_missile"]),
+        # The follow-up with the expected time answers the launch message: it is not a launch.
+        ("⚠Увага!\n✈🚀У разі здійснення пусків крилатих ракет, входження їх у повітряний простір України очікується близько 06:30.", []),
+        ("КР на Хмельниччину (Шепетівка)", ["cruise_missile"]),
+        ("Тернопільщина: КР на Збараж, Почаїв.", ["cruise_missile"]),
+        ("🚀Групи ракет повз Шаргород (Вінниччина) північно-західним курсом на Хмельниччину", ["cruise_missile"]),
+        ("Крилата ракета на Чернігівщині у напрямку Київщини", ["cruise_missile"]),
+        ("КАБи на Донеччину.", []),
+    ],
+)
+def test_cruise_missiles_of_the_official_channel(rules, raw, expected):
+    assert kinds(raw, rules) == expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("х-101 на вишгородський район, дуже багато крилатих на полтавщину", ["cruise_missile"]),
+        ("група кр на бровари", ["cruise_missile"]),
+        ("5 калібрів на черкащину", ["cruise_missile"]),
+        ("відбулись пуски з тушок", ["cruise_launch"]),
+        ("літаки ту-95/160 запустили понад 30 ракет, очікуємо", ["cruise_launch"]),
+        # Not threats: the missiles miss Kyiv; a guess an hour ahead.
+        ("поки що крилаті обходять київ", []),
+        ("Бровари, Біла Церква, Трипілля, Київ — реагуємо зараз вже на потенційну загрозу Х-101.", []),
+        # Launches from the sea fly west: no launch warning. The line is still a cruise-missile
+        # message, but it names no place, so no episode counts it.
+        ("Відбулись пуски крилатих ракет Калібр.", ["cruise_missile"]),
+    ],
+)
+def test_cruise_missiles_of_the_monitoring_channel(monitoring_rules, raw, expected):
+    assert sorted({event.kind for event in events(raw, monitoring_rules)}) == expected
+
+
 # --- Rules file --------------------------------------------------------------
 
 
@@ -464,12 +514,14 @@ def test_example_file_loads():
         "ballistic_missile",
         "ballistic_missile",
         "cruise_missile",
+        "cruise_missile",
+        "cruise_launch",
         "missile",
         "banderol",
         "jet_drone",
         "jet_drone",
     ]
-    assert list(config.situation.courses) == ["banderol", "jet_drone"]
+    assert list(config.situation.courses) == ["cruise_missile", "cruise_launch", "banderol", "jet_drone"]
 
 
 def test_max_length_is_validated():

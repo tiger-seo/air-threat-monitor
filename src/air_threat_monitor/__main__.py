@@ -22,7 +22,13 @@ EXIT_CONFIG = 1
 EXIT_LOGIN_NEEDED = 2
 
 # Names of the threats on the status page.
-THREAT_NAMES = {"ballistic": "Балістика", "banderol": "Бандероль", "jet_drone": "Реактивні БпЛА"}
+THREAT_NAMES = {
+    "ballistic": "Балістика",
+    "cruise_missile": "Крилаті ракети",
+    "cruise_launch": "Пуски крилатих ракет",
+    "banderol": "Бандероль",
+    "jet_drone": "Реактивні БпЛА",
+}
 SITUATION_TICK = 5  # seconds between checks of the decision module's timers
 LOGIN_RETRY = 5  # seconds before connecting again after the session was lost
 CONNECT_RETRY = 15  # seconds before trying again when Telegram cannot be reached at start
