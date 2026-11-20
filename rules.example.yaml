@@ -91,6 +91,12 @@ chats:
       # More missiles, with no destination: "2 ракети!", "Ще 2-4 ракети!", "4 ракети"
       - kind: ballistic_missile
         pattern: '(?im)^(?:ще\s+)?(?P<count>\d+(?:-\d+)?)\s+ракет\w*[\s!]*$'
+      # A follow-up that names only places, Kyiv among them: "БЦ і Київ ❗️",
+      # "Трипілля, БЦ, Київ ❗️" (2026-11-19 23:59 and 00:00 UTC, during a threat
+      # to Kyiv). Біла Церква (БЦ) is not "at us"; Kyiv in the line is. Not a
+      # reply, so no reply_to can follow it.
+      - kind: ballistic_missile
+        pattern: '(?im)^(?=[^\n]*ки[єїі]в(?!ськ))(?P<route>(?:(?:бц|трипілля|біла церква|київ|передмістя|бровари|бориспіл)(?:\s*[,/]\s*|\s+(?:і|та)\s+|\s+)?)+)[.!]*\s*$'
       # The missile is in its terminal phase: impact within seconds. Only this
       # channel reports it. "спуску" (as in a joke about stairs) must not match.
       - kind: ballistic_descent
@@ -156,7 +162,7 @@ chats:
       - kind: ballistic_threat
         pattern: '(?m)^Загроза балістики\s+зі?\s+(?P<from>[^.!\n]+)'
       - kind: ballistic_missile
-        pattern: '(?im)^(?:ще\s+)?(?:\d+(?:-\d+)?\s+ракет\w*|балістика)\s+на\s+(?P<route>[^.!\n]+)'
+        pattern: '(?im)^(?:ще\s+)?(?:(?:\d+(?:-\d+)?\s+)?(?:ракет|циркон)\w*|балістика)\s+на\s+(?P<route>[^.!\n]+)'
       - kind: strike_warning
         pattern: '(?i)(?P<hours>\d+)\s*(?:год\w*\s+)?(?:отримали\s+від\s+)?(?P<source>США|ГУР)'
       - kind: strike_warning

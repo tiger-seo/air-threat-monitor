@@ -396,10 +396,26 @@ def rocketskyiv_rules():
         ),
         ("Без фіксацій.", []),
         ("ще 2 ракети", []),
+        ("Циркон на Київ/передмістя.", [("ballistic_missile", {"route": "Київ/передмістя"})]),
+        ("4 циркона на київ передмістя!", [("ballistic_missile", {"route": "київ передмістя"})]),
     ],
 )
 def test_rocketskyiv(rocketskyiv_rules, raw, expected):
     assert [(event.kind, event.fields) for event in events(raw, rocketskyiv_rules)] == expected
+
+
+# A follow-up that names only places, Kyiv among them, 2026-11-19 23:59 and 00:00 UTC.
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("БЦ і Київ ❗️", [("ballistic_missile", {"route": "БЦ і Київ"})]),
+        ("Трипілля, БЦ, Київ ❗️", [("ballistic_missile", {"route": "Трипілля, БЦ, Київ"})]),
+        ("Київ, ти як?", []),
+        ("Київщина, Біла Церква ❗️", []),
+    ],
+)
+def test_monitoring_place_only_follow_up(monitoring_rules, raw, expected):
+    assert [(event.kind, event.fields) for event in events(raw, monitoring_rules)] == expected
 
 
 # --- Rules file --------------------------------------------------------------
