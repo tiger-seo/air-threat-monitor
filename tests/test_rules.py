@@ -146,6 +146,13 @@ def test_other_missile_wordings(rules, raw, expected):
         ("🏍 Київ: реактивний БпЛА курсом на центр", [("jet_drone", "Київ: реактивний БпЛА курсом на центр")]),
         ("🏍 Реактивні БпЛА на Запоріжжя з півночі.", [("jet_drone", "Реактивні БпЛА на Запоріжжя з півночі.")]),
         ("🏍 Реактивний курсом на Рівне з півночі.", [("jet_drone", "Реактивний курсом на Рівне з півночі.")]),
+        # 2026-11-14 and 2026-11-20 at night: a jet drone over the city, written without the
+        # word. Only Obolon and the Minskyi massif; "Ударні БпЛА" and other districts are not.
+        ("БпЛА на Оболоні", [("jet_drone", "БпЛА на Оболоні")]),
+        ("БпЛА в р-ні Шулявки у напрямку Мінського масиву", [("jet_drone", "БпЛА в р-ні Шулявки у напрямку Мінського масиву")]),
+        ("БпЛА р-н Деміївки на південь", []),
+        ("БпЛА центр Києва на південь", []),
+        ("Ударні БпЛА на Київщині в р-ні Кагарлика курс західний.", []),
         # One line per weapon: each line is its own event, with its own places.
         (
             "🏍 Реактивний БпЛА на півдні Одещини.\n🏍 Реактивний БпЛА повз Згурівку на Київщині, курс на південний напрямок.",
@@ -304,6 +311,30 @@ def test_monitoring_channel(monitoring_rules, raw, expected):
     assert [(event.kind, event.fields) for event in events(raw, monitoring_rules)] == expected
 
 
+# --- kyiv_m0nitoring, 2026-11-20: a fast target with no "ціль", launches, "ціль над" -----
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("Летить швидкісна повз Чернігівщину на Київ", [("ballistic_missile", {"route": "Київ"})]),
+        ("Летить швидкісна на Харків", []),
+        ("Ще ціль над Києвом/передмістям", [("missile", {"route": "над Києвом/передмістям"})]),
+        ("Ціль над Києвом", [("missile", {"route": "над Києвом"})]),
+        ("Ціль над Харковом", []),
+        ("вихід з брянська", [("ballistic_threat", {"from": "брянська"})]),
+        ("Знову вихід з Курська", [("ballistic_threat", {"from": "Курська"})]),
+        ("Повторні виходи балістики", [("ballistic_threat", {})]),
+        # Hedged: guesses of the same night, no event.
+        ("Знову вихід з Брянска можливий", []),
+        ("Можливо ще вихід ракет!", []),
+        ("ще ракети!!", []),
+    ],
+)
+def test_monitoring_2026_11_20(monitoring_rules, raw, expected):
+    assert [(event.kind, event.fields) for event in events(raw, monitoring_rules)] == expected
+
+
 # --- kpszsu, 2026-11-17: a fast target is ballistic when it flies at Kyiv -----
 
 
@@ -435,6 +466,7 @@ def test_example_file_loads():
         "cruise_missile",
         "missile",
         "banderol",
+        "jet_drone",
         "jet_drone",
     ]
     assert list(config.situation.courses) == ["banderol", "jet_drone"]

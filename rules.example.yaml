@@ -61,6 +61,13 @@ chats:
       # "Реактивний курсом на Рівне".
       - kind: jet_drone
         pattern: '(?im)^[^\n]*реактивн(?:ий|і|их)(?!\w)[^\n]*'
+      # At night the channel writes a jet drone over the city without the word:
+      # "БпЛА на Оболоні", "БпЛА в р-ні Шулявки у напрямку Мінського масиву"
+      # (2026-11-14, 2026-11-20; each followed a jet-drone message within 10
+      # minutes). Only the owner's districts, Obolon and the Minskyi massif, and
+      # only a line that starts with "БпЛА": "Ударні БпЛА" are ordinary drones.
+      - kind: jet_drone
+        pattern: '(?im)^БпЛА(?!\w)[^\n]*(?:оболон|мінськ(?:ий|ого|ому|им)\s+масив)[^\n]*'
 
   # Unofficial Kyiv monitoring channel: informal lower-case wording, almost
   # everything in it concerns Kyiv and its suburbs. Wordings checked on 30 days
@@ -80,6 +87,15 @@ chats:
       # The threat in one or two words: "балістика", "бал", "Балістика Воронеж."
       - kind: ballistic_threat
         pattern: '(?im)^(?:бал|бал+[іи]стика)(?:\s+(?P<from>воронеж\w*|брянс\w*|курс\w*))?[.!]*$'
+      # A launch reported as it happens, 1-3 minutes before "на Київ": "вихід з
+      # брянська", "Знову вихід з Курська", "Повторні виходи балістики"
+      # (2026-11-20). Not the hedged ones: "Знову вихід з Брянска можливий",
+      # "Можливо ще вихід ракет!" (they were guesses; the same night's "ще
+      # ракети!!" has no launch place and is left out too).
+      - kind: ballistic_threat
+        pattern: '(?im)^(?![^\n]*можлив)(?:знову\s+|повторн\w+\s+)?вих[іо]д\s+зі?\s+(?P<from>брянс\w+|курс\w+|воронеж\w*|міллеров\w*)[.!\s]*$'
+      - kind: ballistic_threat
+        pattern: '(?im)^повторні\s+виходи\s+балістики[.!\s]*$'
       # Only the launch area, as the whole message: "брянск", "Воронеж". With more
       # lines it is a relayed Russian alert ("Брянск / Ракетная опасность").
       - kind: ballistic_threat
@@ -88,6 +104,15 @@ chats:
       # на київ", "2 ракети з брянська на київ", "2-4 циркона на Київ."
       - kind: ballistic_missile
         pattern: '(?i)(?:балісти\w+|ракет\w*|циркон\w*|іскандер\w*|онікс\w*)(?:\s+[^.!:\n]*?)?\s+на\s+(?P<route>(?:[^.!:\n«]*?[\s/])?ки[єїі]в(?!ськ)[^.!\n]*)'
+      # "Летить швидкісна повз Чернігівщину на Київ" (2026-11-20 02:32, 70 s before
+      # the official channel): a fast target with no word "ціль", at Kyiv.
+      - kind: ballistic_missile
+        pattern: '(?i)швидкісн\w+(?:\s+[^.!:\n]*?)?\s+на\s+(?P<route>(?:[^.!:\n«]*?[\s/])?ки[єїі]в(?!ськ)[^.!\n]*)'
+      # "Ще ціль над Києвом/передмістям" (2026-11-20 02:38, after a descent): a
+      # target of an unnamed type. As with "ракета", it counts only during a
+      # ballistic threat: the channel calls drones "ціль" too.
+      - kind: missile
+        pattern: '(?im)^(?:ще\s+)?ціль\s+(?P<route>над\s+[^.!\n]*ки[єїі]в(?!ськ)[^.!\n]*)'
       # More missiles, with no destination: "2 ракети!", "Ще 2-4 ракети!", "4 ракети"
       - kind: ballistic_missile
         pattern: '(?im)^(?:ще\s+)?(?P<count>\d+(?:-\d+)?)\s+ракет\w*[\s!]*$'
