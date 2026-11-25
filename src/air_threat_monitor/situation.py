@@ -41,6 +41,9 @@ class SourceConfig:
     # The source writes about the home area only: its missile messages
     # concern the home even when they name no place ("2 ракети!").
     about_home: bool = False
+    # Only these event kinds count from the source; its other messages are
+    # recorded by the gateway but ignored here (empty: every kind counts).
+    only: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -158,12 +161,16 @@ def parse_situation(data: Any, chat_names: set[str]) -> SituationConfig:
         if name not in chat_names:
             raise ConfigError(f"{where}.sources.{name}: no such chat under 'chats'")
         body = {} if body is None else body
-        if not isinstance(body, dict) or set(body) - {"official", "about_home"}:
-            raise ConfigError(f"{where}.sources.{name}: expected only 'official' and 'about_home'")
-        for key, value in body.items():
+        if not isinstance(body, dict) or set(body) - {"official", "about_home", "only"}:
+            raise ConfigError(f"{where}.sources.{name}: expected only 'official', 'about_home' and 'only'")
+        only = body.get("only", [])
+        if not isinstance(only, list) or not all(isinstance(kind, str) for kind in only):
+            raise ConfigError(f"{where}.sources.{name}.only: expected a list of event kinds")
+        flags = {key: value for key, value in body.items() if key != "only"}
+        for key, value in flags.items():
             if not isinstance(value, bool):
                 raise ConfigError(f"{where}.sources.{name}.{key}: expected true or false")
-        sources[name] = SourceConfig(**body)
+        sources[name] = SourceConfig(**flags, only=tuple(only))
 
     return SituationConfig(
         home=pattern("home", True),
@@ -225,6 +232,10 @@ class Situation:
         if now - when > self.config.stale_after:
             return []
         events = [p.payload for p in publications if p.kind == "event"]
+        if config.only:
+            # A restricted source: its replies and unknown messages say nothing here.
+            events = [e for e in events if e["kind"] in config.only]
+            return [d for e in events for d in self._on_event(source, config, e, now)]
         decisions: list[dict] = []
         if events:
             for payload in events:
@@ -256,6 +267,10 @@ class Situation:
             return []
 
         if kind == DESCENT:
+            # A countrywide channel counts the descents all over the country:
+            # only one that names a place of home is ours.
+            if not config.about_home and self._scope(payload["text"]) != "home":
+                return []
             self._touch(now)
             self._descent_until = now + self.config.descent_hold
             self._inbound("home", now)

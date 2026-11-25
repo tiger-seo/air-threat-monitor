@@ -168,11 +168,13 @@ chats:
       - kind: jet_drone
         pattern: '(?im)^(?![^\n]*(?:(?<!\w)був(?!\w)|не\s+фікс\w*\s+вже|збил|збит|мінус))[^\n]*(?<!\w)реактив(?:и|а|ний|ні)?(?!\w)[^\n]*'
 
-  # Private channel of one person, a countrywide monitor. Recorded only (it is
-  # not under situation.sources): its threat and all-clear repeat kpszsu about
-  # 20 s later, and its author was silent from 2026-11-10 to 2026-11-19. What is
-  # its own: the per-missile "спуск" count, Zircon/Onyx courses, launches
-  # ("Вихід Брянськ"). Wordings checked on 30 days of history, 2026-11-19.
+  # Private channel of one person, a countrywide monitor. Under
+  # situation.sources only for "спуск" (`only: [ballistic_descent]`): its threat
+  # and all-clear repeat kpszsu about 20 s later, and its author was silent from
+  # 2026-11-10 to 2026-11-19, so everything else is recorded only. What is its
+  # own: the per-missile "спуск" count (on 2026-11-25 22:46 it was the only
+  # channel to report one, and the home heard nothing), Zircon/Onyx courses,
+  # launches ("Вихід Брянськ"). Wordings checked on 30 days of history, 2026-11-19.
   war_monitor:
     poll_interval: 3
     max_length: 250
@@ -224,6 +226,7 @@ chats:
 # sources.<chat>.official: its all-clear ends the threat.
 # sources.<chat>.about_home: the chat writes about the home area only, so its
 #   missile messages concern the home even without a place ("2 ракети!").
+# sources.<chat>.only: a list of event kinds; only these count from the chat.
 # Durations in seconds: episode_timeout (a threat with no all-clear ends, 3600),
 #   inbound_hold ("take cover" lasts this long after the last missile message
 #   toward the home, 600), descent_hold (120), repeat_interval (60).
@@ -237,6 +240,8 @@ situation:
       official: true
     kyiv_m0nitoring:
       about_home: true
+    war_monitor:
+      only: [ballistic_descent]
   # Threats known only by their course, by the event kind of their rules; the
   # kind is also the topic (air_threat/<kind>). Only messages that name a place
   # of home or region count. Durations in seconds: episode_timeout (the episode

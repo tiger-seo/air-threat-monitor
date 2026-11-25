@@ -11,7 +11,7 @@ from air_threat_monitor.situation import Interpreter, Situation
 
 EXAMPLE = Path(__file__).parent.parent / "rules.example.yaml"
 T0 = datetime(2026, 11, 11, 22, 53, 59, tzinfo=timezone.utc)
-AF, MON = "kpszsu", "kyiv_m0nitoring"
+AF, MON, WAR = "kpszsu", "kyiv_m0nitoring", "war_monitor"
 
 
 class World:
@@ -205,6 +205,28 @@ def test_descent_outside_a_threat_is_ignored():
     assert world.situation.state(world.now) == "idle"
 
 
+def test_war_monitor_counts_only_its_descents_over_kyiv():
+    """2026-11-25 22:46: the descent was reported by war_monitor alone, and the home heard nothing."""
+    world = World()
+    world.post(MON, "Балістика на Київ/передмістя.", after=5)
+    # Its threat and all-clear repeat kpszsu; they do not open or end anything here.
+    assert world.post(WAR, "Відбій загрози балістики.", after=10) == []
+    assert world.situation.state(world.now) == "inbound_home"
+    # A descent elsewhere in the country is not ours.
+    assert world.post(WAR, "Покров / Зеленодольськ— спуск балістики!", after=10) == []
+    assert world.situation.state(world.now) == "inbound_home"
+    descent = world.post(WAR, "‼️ Київ — спуск балістики! Друга", after=10)
+    assert brief(descent) == [("raised", "impact", "descent")]
+    assert descent[0]["source"] == WAR
+
+
+def test_war_monitor_descent_outside_a_threat_is_ignored():
+    world = World()
+    assert world.post(WAR, "Київ — спуск балістики!") == []
+    assert world.post(WAR, "Загроза балістики з Брянська. Увага.", after=5) == []
+    assert world.situation.state(world.now) == "idle"
+
+
 def test_unnamed_missile_outside_a_threat_is_ignored():
     world = World()
     assert world.post(AF, "🚀 Ракета на Запоріжжя з півночі.") == []
@@ -268,6 +290,7 @@ def test_situation_is_optional():
         ({"home": "київ", "sources": {"b": {}}}, "situation.sources.b: no such chat"),
         ({"home": "київ", "sources": {"a": {"trusted": True}}}, "situation.sources.a: expected only"),
         ({"home": "київ", "sources": {"a": {"official": "yes"}}}, "situation.sources.a.official"),
+        ({"home": "київ", "sources": {"a": {"only": "ballistic_descent"}}}, "situation.sources.a.only"),
         ({"home": "київ", "sources": {"a": {}}, "inbound_hold": 0}, "situation.inbound_hold"),
     ],
 )
